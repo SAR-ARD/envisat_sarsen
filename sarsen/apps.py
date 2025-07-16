@@ -18,13 +18,15 @@ def make_simulate_acquisition_template(
     template_raster: xr.DataArray,
     correct_radiometry: str | None = None,
 ) -> xr.Dataset:
+
     acquisition_template = xr.Dataset(
         data_vars={
             "slant_range_time": template_raster,
             "azimuth_time": template_raster.astype("datetime64[ns]"),
         }
     )
-    include_variables = {"slant_range_time", "azimuth_time"}
+    include_variables = {"slant_range_time", "azimuth_time", "ellipsoid_incidence_angle"}
+    acquisition_template["ellipsoid_incidence_angle"] = template_raster
     if correct_radiometry is not None:
         acquisition_template["gamma_area"] = template_raster
         include_variables.add("gamma_area")
@@ -42,6 +44,7 @@ def simulate_acquisition(
     velocity_ecef = orbit_interpolator.velocity()
 
     acquisition = geocoding.backward_geocode(dem_ecef, position_ecef, velocity_ecef)
+
 
     slant_range = (acquisition.dem_distance**2).sum(dim="axis") ** 0.5
     slant_range_time = 2.0 / SPEED_OF_LIGHT * slant_range
@@ -75,6 +78,7 @@ def map_simulate_acquisition(
     acquisition_template = make_simulate_acquisition_template(
         template_raster, correct_radiometry
     )
+
     acquisition = xr.map_blocks(
         simulate_acquisition,
         dem_ecef,
@@ -170,7 +174,7 @@ def do_terrain_correction(
     geocoded.y.attrs.update(dem_ecef.y.attrs)
     geocoded.rio.write_crs(dem_ecef.rio.crs, inplace=True)
 
-    return geocoded, simulated_beta_nought
+    return geocoded, simulated_beta_nought, acquisition
 
 
 def terrain_correction(
@@ -247,7 +251,7 @@ def terrain_correction(
         dem_urlpath, chunks=chunks, **open_dem_raster_kwargs
     )
 
-    geocoded, simulated_beta_nought = do_terrain_correction(
+    geocoded, simulated_beta_nought, extra_layers = do_terrain_correction(
         product=product,
         dem_raster=dem_raster,
         correct_radiometry=correct_radiometry,
@@ -304,6 +308,7 @@ def envisat_terrain_correction(
     product: datamodel.SarProduct,
     dem_urlpath: str,
     output_urlpath: Optional[str] = "GTC.tif",
+    layers_urlpath: Optional[str] ="layers.tif",
     simulated_urlpath: Optional[str] = None,
     correct_radiometry: Optional[str] = None,
     interp_method: xr.core.types.InterpOptions = "nearest",
@@ -382,6 +387,7 @@ def envisat_terrain_correction(
     )
     dem_ecef = dem_ecef.drop_vars(dem_ecef.rio.grid_mapping)
 
+
     logger.info("simulate acquisition")
 
     template_raster = dem_raster.drop_vars(dem_raster.rio.grid_mapping) * 0.0
@@ -407,6 +413,7 @@ def envisat_terrain_correction(
         template_raster,
         correct_radiometry
     )
+
 
     if correct_radiometry is not None:
         logger.info("simulate radiometry")
@@ -467,7 +474,6 @@ def envisat_terrain_correction(
         interp_kwargs = {"slant_range_time": acquisition.slant_range_time}
 
 
-    print("ENVI DIMS = ")
     with mock.patch("xarray.core.missing._localize", lambda o, i: (o, i)):
         geocoded = beta_nought.interp(
             method=interp_method,
@@ -506,7 +512,6 @@ def envisat_terrain_correction(
     #test.compute()
 
 
-
     maybe_delayed = geocoded.rio.to_raster(
         output_urlpath,
         dtype=np.float32,
@@ -517,6 +522,23 @@ def envisat_terrain_correction(
         num_threads="ALL_CPUS",
         **to_raster_kwargs,
     )
+
+
+    # for now always write out the auxilliary layers dataset
+    # clarify in how it is to be controlled
+    layers_dataset = acquisition.drop_vars("azimuth_time")
+    layers_dataset.rio.to_raster(
+        layers_urlpath,
+        dtype=np.float32,
+        tiled=True,
+        blockxsize=output_chunks,
+        blockysize=output_chunks,
+        compress="ZSTD",
+        num_threads="ALL_CPUS",
+        **to_raster_kwargs,
+    )
+
+
 
     if enable_dask_distributed:
         maybe_delayed.compute()
