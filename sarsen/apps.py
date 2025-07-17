@@ -47,6 +47,7 @@ def simulate_acquisition(
     )
 
 
+
     slant_range = (acquisition.dem_distance**2).sum(dim="axis") ** 0.5
     slant_range_time = 2.0 / SPEED_OF_LIGHT * slant_range
 
