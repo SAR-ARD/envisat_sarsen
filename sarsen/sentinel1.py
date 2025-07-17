@@ -36,9 +36,9 @@ def open_dataset_autodetect(
         )
     except FileNotFoundError:
         # re-try with Planetary Computer option
-        kwargs[
-            "override_product_files"
-        ] = "{dirname}/{prefix}{swath}-{polarization}{ext}"
+        kwargs["override_product_files"] = (
+            "{dirname}/{prefix}{swath}-{polarization}{ext}"
+        )
         ds = xr.open_dataset(product_urlpath, group=group, chunks=chunks, **kwargs)
     return ds, kwargs
 
@@ -177,7 +177,7 @@ class Sentinel1SarProduct(sarsen.GroundRangeSarProduct, sarsen.SlantRangeSarProd
         return prod_type
 
     @functools.cache
-    def beta_nought(self, persist=False) -> xr.DataArray:
+    def beta_nought(self, persist: bool = False) -> xr.DataArray:
         measurement = self.measurement.data_vars["measurement"]
         beta_nought = xarray_sentinel.calibrate_intensity(
             measurement, self.calibration.betaNought

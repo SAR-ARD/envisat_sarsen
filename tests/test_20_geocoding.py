@@ -11,42 +11,38 @@ def test_secant_method() -> None:
     def ufunc(
         t: npt.ArrayLike,
     ) -> Tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]:
-        ft: npt.NDArray[np.float64] = np.asarray(t).astype("float64")
-        retval = 1.0 + 0.015 * ft - 0.0001 * ft**2 + 0.00003 * ft**3
-        return retval, retval
+        retval = 1.0 + 0.015 * t - 0.0001 * t**2 + 0.00003 * t**3  # type: ignore
+        return retval, retval  # type: ignore
 
-    t_start: npt.NDArray[np.timedelta64] = np.array([np.timedelta64(-100, "ns")])
+    t_start = np.array([-100.0])
 
     # stop with df threshold
-    res, _, _, _ = geocoding.secant_method(ufunc, -t_start, t_start, diff_ufunc=0.1)
+    res, _, _, _, _ = geocoding.secant_method(ufunc, -t_start, t_start, diff_ufunc=0.1)
 
     assert isinstance(res, np.ndarray)
     assert res.size == 1
-    assert res[0] == np.timedelta64(-27, "ns")
+    assert np.allclose(res, -25.1724)
 
     # stop with dt threshold
-    res, _, _, _ = geocoding.secant_method(ufunc, -t_start, t_start, diff_ufunc=0.01)
+    res, _, _, _, _ = geocoding.secant_method(ufunc, -t_start, t_start, diff_ufunc=0.01)
 
-    assert res[0] == np.timedelta64(-27, "ns")
+    assert np.allclose(res, -26.3065)
 
-    t_start = np.ones((2, 2), dtype="timedelta64[ns]") * 100  # type: ignore
+    t_start = np.ones((2, 2))
 
-    res, _, _, _ = geocoding.secant_method(ufunc, -t_start, t_start, diff_ufunc=0.1)
+    res, _, _, _, _ = geocoding.secant_method(ufunc, -t_start, t_start, diff_ufunc=0.01)
 
     assert res.shape == t_start.shape
-    assert np.all(res == np.timedelta64(-27, "ns"))
+    assert np.allclose(res, -26.102)
 
 
-def test_zero_doppler_plane_distance(
+def test_zero_doppler_plane_distance_velocity(
     dem_ecef: xr.DataArray, orbit_ds: xr.Dataset
 ) -> None:
     orbit_interpolator = orbit.OrbitPolyfitInterpolator.from_position(orbit_ds.position)
 
-    res0, (res1, res2) = geocoding.zero_doppler_plane_distance(
-        dem_ecef,
-        orbit_interpolator.position(),
-        orbit_interpolator.velocity(),
-        orbit_ds.azimuth_time,
+    res0, (res1, res2) = geocoding.zero_doppler_plane_distance_velocity(
+        dem_ecef, orbit_interpolator, orbit_ds.azimuth_time
     )
 
     assert isinstance(res0, xr.DataArray)
@@ -57,10 +53,10 @@ def test_zero_doppler_plane_distance(
 def test_backward_geocode(dem_ecef: xr.DataArray, orbit_ds: xr.Dataset) -> None:
     orbit_interpolator = orbit.OrbitPolyfitInterpolator.from_position(orbit_ds.position)
 
-    res = geocoding.backward_geocode(
-        dem_ecef,
-        orbit_interpolator.position(),
-        orbit_interpolator.velocity(),
-    )
+    res = geocoding.backward_geocode(dem_ecef, orbit_interpolator)
+
+    assert isinstance(res, xr.Dataset)
+
+    res = geocoding.backward_geocode(dem_ecef, orbit_interpolator, method="newton")
 
     assert isinstance(res, xr.Dataset)

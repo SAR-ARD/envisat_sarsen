@@ -36,12 +36,13 @@ def simulate_acquisition(
     dem_ecef: xr.DataArray,
     orbit_interpolator: orbit.OrbitPolyfitInterpolator,
     include_variables: Container[str] = (),
+    azimuth_time: xr.DataArray | float = 0.0,
+    **kwargs: Any,
 ) -> xr.Dataset:
     """Compute the image coordinates of the DEM given the satellite orbit."""
-    position_ecef = orbit_interpolator.position()
-    velocity_ecef = orbit_interpolator.velocity()
-
-    acquisition = geocoding.backward_geocode(dem_ecef, position_ecef, velocity_ecef)
+    acquisition = geocoding.backward_geocode(
+        dem_ecef, orbit_interpolator, azimuth_time, **kwargs
+    )
 
     slant_range = (acquisition.dem_distance**2).sum(dim="axis") ** 0.5
     slant_range_time = 2.0 / SPEED_OF_LIGHT * slant_range
@@ -69,19 +70,23 @@ def simulate_acquisition(
 def map_simulate_acquisition(
     dem_ecef: xr.DataArray,
     orbit_interpolator: orbit.OrbitPolyfitInterpolator,
-    template_raster: xr.DataArray,
+    template_raster: xr.DataArray | None = None,
     correct_radiometry: str | None = None,
+    **kwargs: Any,
 ) -> xr.Dataset:
+    if template_raster is None:
+        template_raster = dem_ecef.isel(axis=0).drop_vars(["axis", "spatial_ref"]) * 0.0
     acquisition_template = make_simulate_acquisition_template(
         template_raster, correct_radiometry
     )
     acquisition = xr.map_blocks(
         simulate_acquisition,
-        dem_ecef,
+        dem_ecef.drop_vars("spatial_ref"),
         kwargs={
             "orbit_interpolator": orbit_interpolator,
             "include_variables": list(acquisition_template.data_vars),
-        },
+        }
+        | kwargs,
         template=acquisition_template,
     )
     return acquisition
@@ -96,6 +101,7 @@ def do_terrain_correction(
     grouping_area_factor: tuple[float, float] = (3.0, 3.0),
     radiometry_chunks: int = 2048,
     radiometry_bound: int = 128,
+    seed_step: tuple[int, int] | None = None,
 ) -> tuple[xr.DataArray, xr.DataArray | None]:
     logger.info("pre-process DEM")
 
@@ -112,10 +118,10 @@ def do_terrain_correction(
     )
 
     acquisition = map_simulate_acquisition(
-        dem_ecef.drop_vars(["spatial_ref"]),
+        dem_ecef,
         orbit_interpolator,
-        template_raster,
-        correct_radiometry,
+        correct_radiometry=correct_radiometry,
+        seed_step=seed_step,
     )
 
     simulated_beta_nought = None
@@ -187,6 +193,7 @@ def terrain_correction(
     radiometry_bound: int = 128,
     enable_dask_distributed: bool = False,
     client_kwargs: dict[str, Any] = {"processes": False},
+    seed_step: tuple[int, int] | None = None,
 ) -> xr.DataArray:
     """Apply the terrain-correction to sentinel-1 SLC and GRD products.
 
@@ -236,8 +243,8 @@ def terrain_correction(
     if enable_dask_distributed:
         from dask.distributed import Client, Lock
 
-        client = Client(**client_kwargs)  # type: ignore
-        to_raster_kwargs["lock"] = Lock("rio", client=client)  # type: ignore
+        client = Client(**client_kwargs)
+        to_raster_kwargs["lock"] = Lock("rio", client=client)
         to_raster_kwargs["compute"] = False
         print(f"Dask distributed dashboard at: {client.dashboard_link}")
 
@@ -255,6 +262,7 @@ def terrain_correction(
         grouping_area_factor=grouping_area_factor,
         radiometry_chunks=radiometry_chunks,
         radiometry_bound=radiometry_bound,
+        seed_step=seed_step,
     )
 
     if simulated_urlpath is not None:

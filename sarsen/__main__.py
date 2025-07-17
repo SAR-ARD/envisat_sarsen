@@ -30,10 +30,12 @@ def gtc(
     enable_dask_distributed: bool = False,
     client_kwargs_json: str = '{"processes": false}',
     chunks: int = 1024,
+    seed_step: int | None = None,
 ) -> None:
     """Generate a geometrically terrain corrected (GTC) image from Sentinel-1 product."""
     client_kwargs = json.loads(client_kwargs_json)
     real_chunks = chunks if chunks > 0 else None
+    real_seed_step = (seed_step, seed_step) if seed_step is not None else None
     logging.basicConfig(level=logging.INFO)
     product = sentinel1.Sentinel1SarProduct(
         product_urlpath,
@@ -46,6 +48,7 @@ def gtc(
         enable_dask_distributed=enable_dask_distributed,
         client_kwargs=client_kwargs,
         chunks=real_chunks,
+        seed_step=real_seed_step,
     )
 
 
@@ -59,10 +62,12 @@ def stc(
     client_kwargs_json: str = '{"processes": false}',
     chunks: int = 1024,
     grouping_area_factor: Tuple[float, float] = (3.0, 3.0),
+    seed_step: int | None = None,
 ) -> None:
     """Generate a simulated terrain corrected image from a Sentinel-1 product."""
     client_kwargs = json.loads(client_kwargs_json)
     real_chunks = chunks if chunks > 0 else None
+    real_seed_step = (seed_step, seed_step) if seed_step is not None else None
     logging.basicConfig(level=logging.INFO)
     product = sentinel1.Sentinel1SarProduct(
         product_urlpath,
@@ -77,6 +82,7 @@ def stc(
         enable_dask_distributed=enable_dask_distributed,
         client_kwargs=client_kwargs,
         chunks=real_chunks,
+        seed_step=real_seed_step,
     )
 
 
@@ -90,10 +96,12 @@ def rtc(
     client_kwargs_json: str = '{"processes": false}',
     chunks: int = 1024,
     grouping_area_factor: Tuple[float, float] = (3.0, 3.0),
+    seed_step: int | None = None,
 ) -> None:
     """Generate a radiometrically terrain corrected (RTC) image from Sentinel-1 product."""
     client_kwargs = json.loads(client_kwargs_json)
     real_chunks = chunks if chunks > 0 else None
+    real_seed_step = (seed_step, seed_step) if seed_step is not None else None
     logging.basicConfig(level=logging.INFO)
     product = sentinel1.Sentinel1SarProduct(
         product_urlpath,
@@ -108,6 +116,7 @@ def rtc(
         enable_dask_distributed=enable_dask_distributed,
         client_kwargs=client_kwargs,
         chunks=real_chunks,
+        seed_step=real_seed_step,
     )
 
 
