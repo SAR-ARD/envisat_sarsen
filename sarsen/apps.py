@@ -81,7 +81,7 @@ def map_simulate_acquisition(
     )
     acquisition = xr.map_blocks(
         simulate_acquisition,
-        dem_ecef.drop_vars("spatial_ref"),
+        dem_ecef,
         kwargs={
             "orbit_interpolator": orbit_interpolator,
             "include_variables": list(acquisition_template.data_vars),
