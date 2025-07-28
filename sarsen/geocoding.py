@@ -244,7 +244,7 @@ def backward_geocode(
 def calculate_ellipsoid_incidence_angle(sar_ecef: xr.DataArray, dem_ecef: xr.DataArray):
     block_x = dem_ecef.sizes['x']
     block_y = dem_ecef.sizes['y']
-    data = np.ndarray((block_x, block_y))
+    data = np.ndarray((block_y, block_x))
     data.fill(0.0)
 
     A = 6378137.0
