@@ -51,7 +51,8 @@ class EnvisatProduct:
         self.osv = self.compute_osv()
 
     def beta_nought(self) -> xr.DataArray:
-        return np.power(np.abs(self.measurement), 2)
+        cal_factor = self.measurement.metadata["direct_parse"]["cal_factor"]
+        return np.power(np.abs(self.measurement), 2) / cal_factor
 
     # def grid_parameters(
     #         self,
@@ -87,6 +88,7 @@ class EnvisatProduct:
             velocities[0].append(orbit["x_vel_1"] * 1e-5)
             velocities[1].append(orbit["y_vel_1"] * 1e-5)
             velocities[2].append(orbit["z_vel_1"] * 1e-5)
+
 
         return make_orbit(azimuth_times, positions, velocities)
 

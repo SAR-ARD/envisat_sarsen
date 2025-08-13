@@ -16,6 +16,7 @@ SPEED_OF_LIGHT = 299_792_458.0  # m / s
 def make_simulate_acquisition_template(
         template_raster: xr.DataArray,
         correct_radiometry: str | None = None,
+        calc_annotation = False
 ) -> xr.Dataset:
     acquisition_template = xr.Dataset(
         data_vars={
@@ -23,8 +24,11 @@ def make_simulate_acquisition_template(
             "azimuth_time": template_raster.astype("datetime64[ns]"),
         }
     )
-    include_variables = {"slant_range_time", "azimuth_time", "ellipsoid_incidence_angle"}
-    acquisition_template["ellipsoid_incidence_angle"] = template_raster
+    include_variables = {"slant_range_time", "azimuth_time"}
+    if calc_annotation:
+        include_variables.add("ellipsoid_incidence_angle")
+        acquisition_template["ellipsoid_incidence_angle"] = template_raster
+
     if correct_radiometry is not None:
         acquisition_template["gamma_area"] = template_raster
         include_variables.add("gamma_area")
@@ -41,7 +45,8 @@ def simulate_acquisition(
 ) -> xr.Dataset:
     """Compute the image coordinates of the DEM given the satellite orbit."""
 
-    acquisition = geocoding.backward_geocode(dem_ecef, orbit_interpolator)
+    calc_annotation = "ellipsoid_incidence_angle" in include_variables
+    acquisition = geocoding.backward_geocode(dem_ecef, orbit_interpolator, calc_annotation=calc_annotation)
 
     slant_range = (acquisition.dem_distance ** 2).sum(dim="axis") ** 0.5
     slant_range_time = 2.0 / SPEED_OF_LIGHT * slant_range
@@ -71,12 +76,13 @@ def map_simulate_acquisition(
         orbit_interpolator: orbit.OrbitPolyfitInterpolator,
         template_raster: xr.DataArray | None = None,
         correct_radiometry: str | None = None,
+        calc_annotation = False,
         **kwargs: Any,
 ) -> xr.Dataset:
     if template_raster is None:
         template_raster = dem_ecef.isel(axis=0).drop_vars(["axis", "spatial_ref"]) * 0.0
     acquisition_template = make_simulate_acquisition_template(
-        template_raster, correct_radiometry
+        template_raster, correct_radiometry, calc_annotation
     )
 
     acquisition = xr.map_blocks(
@@ -313,7 +319,7 @@ def envisat_terrain_correction(
         product: datamodel.SarProduct,
         dem_urlpath: str,
         output_urlpath: Optional[str] = "GTC.tif",
-        layers_urlpath: Optional[str] = "layers.tif",
+        layers_urlpath: Optional[str] = None,
         simulated_urlpath: Optional[str] = None,
         correct_radiometry: Optional[str] = None,
         interp_method: xr.core.types.InterpOptions = "nearest",
@@ -415,7 +421,8 @@ def envisat_terrain_correction(
         dem_ecef,
         orbit_interpolator,
         template_raster,
-        correct_radiometry
+        correct_radiometry,
+        layers_urlpath != None,
     )
 
     if correct_radiometry is not None:
@@ -524,19 +531,19 @@ def envisat_terrain_correction(
         **to_raster_kwargs,
     )
 
-    # for now always write out the auxilliary layers dataset
-    # clarify in how it is to be controlled
-    layers_dataset = acquisition.drop_vars("azimuth_time")
-    layers_dataset.rio.to_raster(
-        layers_urlpath,
-        dtype=np.float32,
-        tiled=True,
-        blockxsize=output_chunks,
-        blockysize=output_chunks,
-        compress="ZSTD",
-        num_threads="ALL_CPUS",
-        **to_raster_kwargs,
-    )
+    # write if urlpath is specified
+    if layers_urlpath:
+        layers_dataset = acquisition.drop_vars("azimuth_time")
+        layers_dataset.rio.to_raster(
+            layers_urlpath,
+            dtype=np.float32,
+            tiled=True,
+            blockxsize=output_chunks,
+            blockysize=output_chunks,
+            compress="ZSTD",
+            num_threads="ALL_CPUS",
+            **to_raster_kwargs,
+        )
 
     if enable_dask_distributed:
         maybe_delayed.compute()
@@ -544,17 +551,13 @@ def envisat_terrain_correction(
     return geocoded
 
 
-def fun_grsr():
-    """
-    Function to return the slant_range_time_to_ground_range function
-    """
 
-    def slant_range_time_to_ground_range(azimuth_time: xr.DataArray, slant_range_time: xr.DataArray) -> xr.DataArray:
-        """
-        Convert slant range time to ground range.
-        """
-        return datamodel.GroundRangeSarProduct.slant_range_time_to_ground_range(
-            azimuth_time, slant_range_time
-        )
 
-    return slant_range_time_to_ground_range
+def slant_range_time_to_ground_range(azimuth_time: xr.DataArray, slant_range_time: xr.DataArray) -> xr.DataArray:
+    """
+    Convert slant range time to ground range.
+    """
+    return datamodel.GroundRangeSarProduct.slant_range_time_to_ground_range(
+        azimuth_time, slant_range_time
+    )
+

@@ -139,6 +139,7 @@ def backward_geocode_simple(
         method: str = "secant",
         orbit_time_prev_shift: float = -0.1,
         maxiter: int = 10,
+        calc_annotation = False,
 ) -> tuple[xr.DataArray, xr.DataArray, xr.DataArray, xr.DataArray]:
     diff_ufunc = zero_doppler_distance * satellite_speed
     zero_doppler = functools.partial(
@@ -177,10 +178,12 @@ def backward_geocode_simple(
         )
 
     # sar_ecef = zero_doppler_plane_distance_velocity(dem_ecef, orbit_interpolator, orbit_time_guess)[1][2]
-    elliposid_incidence_angle = calculate_ellipsoid_incidence_angle(
-        sar_ecef=sar_ecef,
-        dem_ecef=dem_ecef
-    )
+    elliposid_incidence_angle = None
+    if calc_annotation:
+        elliposid_incidence_angle = calculate_ellipsoid_incidence_angle(
+            sar_ecef=sar_ecef,
+            dem_ecef=dem_ecef
+        )
     # print(f"iterations: {k}")
     return orbit_time, dem_distance, satellite_velocity, elliposid_incidence_angle
 
@@ -197,6 +200,7 @@ def backward_geocode(
         maxiter: int = 10,
         maxiter_after_seed: int = 1,
         orbit_time_prev_shift: float = -0.1,
+        calc_annotation = False
 ) -> xr.Dataset:
     if seed_step is not None:
         dem_ecef_seed = dem_ecef.isel(
@@ -228,6 +232,7 @@ def backward_geocode(
         method,
         maxiter=maxiter,
         orbit_time_prev_shift=orbit_time_prev_shift,
+        calc_annotation=calc_annotation
     )
 
     acquisition = xr.Dataset(
