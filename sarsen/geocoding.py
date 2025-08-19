@@ -181,11 +181,10 @@ def backward_geocode_simple(
     ellipsoid_incidence_angle = None
     local_incidence_angle = None
     if calc_annotation:
-        ellipsoid_incidence_angle = calculate_ellipsoid_incidence_angle(
+        ellipsoid_incidence_angle = calculate_ellipsoid_incidence_angle_vectorised(
             sar_ecef=sar_ecef,
             dem_ecef=dem_ecef
         )
-
         local_incidence_angle = calculate_local_incidence_angle(dem_ecef, sar_ecef)
     return orbit_time, dem_distance, satellite_velocity, ellipsoid_incidence_angle, local_incidence_angle
 
@@ -290,8 +289,53 @@ def calculate_ellipsoid_incidence_angle(sar_ecef: xr.DataArray, dem_ecef: xr.Dat
     return ellipsoid_incidence_angle
 
 
+def calculate_ellipsoid_incidence_angle_vectorised(sar_ecef: xr.DataArray, dem_ecef: xr.DataArray):
+    A = 6378137.0
+    B = 6356752.3142451794975639665996337
+    asq = A * A
+    bsq = B * B
+
+    ellipsoid_scaler = np.array([1 / asq, 1 / asq, 1 / bsq]).reshape(3, 1, 1)
+    ep_calc = dem_ecef * ellipsoid_scaler
+
+    norm_ep = ep_calc / np.linalg.norm(ep_calc, axis=0)
+
+    dem_ecef_transposed = dem_ecef.transpose("y", "x", dem_ecef.dims[0])
+    sar_dir = sar_ecef - dem_ecef_transposed
+
+    # Normalize the look direction vectors using NumPy's broadcasting
+    norm_sar = sar_dir / np.linalg.norm(sar_dir.values, axis=2, keepdims=True)
+
+    # 4. Calculate the angle between the two vector fields
+    # Transpose norm_sar from (y, x, 3) back to (3, y, x) to align with norm_ep
+    norm_sar_transposed = norm_sar.transpose(dem_ecef.dims[0], "y", "x")
+
+    # Use einsum for an efficient, element-wise dot product across the grid
+    dot_product = np.einsum("ijk,ijk->jk", norm_ep, norm_sar_transposed)
+
+    # Calculate the angle, clipping for numerical stability, and convert to degrees
+    angle_rad = np.arccos(np.clip(dot_product, -1.0, 1.0))
+    angle_deg = np.rad2deg(angle_rad)
+
+    # 5. Return a properly formatted xarray DataArray
+    spatial_dims = dem_ecef.dims[1:]
+    return xr.DataArray(
+        data=angle_deg.data,
+        dims=spatial_dims,
+        coords={dim: dem_ecef.coords[dim] for dim in spatial_dims},
+        name="ellipsoid_incidence_angle",
+    )
+
+
 def calculate_dem_normals_ecef(dem_ecef: xr.DataArray) -> xr.DataArray:
-    gradient = np.gradient(dem_ecef.values, axis=(1, 2))
+    if dem_ecef.shape[0] != 3:
+        # Heuristic: put the 3-length dim first
+        comp_dim = [d for d in dem_ecef.dims if dem_ecef.sizes[d] == 3][0]
+        dem_ecef_reshaped = dem_ecef.transpose(comp_dim, ...)
+    else:
+        dem_ecef_reshaped = dem_ecef
+
+    gradient = np.gradient(dem_ecef_reshaped.values, axis=(1, 2))
     grad_y = gradient[0]
     grad_x = gradient[1]
 
@@ -301,27 +345,40 @@ def calculate_dem_normals_ecef(dem_ecef: xr.DataArray) -> xr.DataArray:
     norms[norms == 0] = 1
     normals /= norms
 
-    return xr.DataArray(normals, dims=dem_ecef.dims, coords=dem_ecef.coords)
+    p = dem_ecef_reshaped.values
+    sign = np.sign(np.sum(normals * p, axis=0, keepdims=True))
+    sign[sign == 0] = 1  # Avoid zero division
+    normals *= sign
+
+    return xr.DataArray(normals, dims=dem_ecef_reshaped.dims, coords=dem_ecef_reshaped.coords)
 
 
 def calculate_local_incidence_angle(
         dem_ecef: xr.DataArray,
         sar_ecef: xr.DataArray
 ) -> xr.DataArray:
-    if sar_ecef.dims != dem_ecef.dims:
-        sar_ecef_reshaped = sar_ecef.transpose(*dem_ecef.dims)
-    else:
-        sar_ecef_reshaped = sar_ecef
-    dem_normals = calculate_dem_normals_ecef(dem_ecef)
-    sar_dir = sar_ecef_reshaped - dem_ecef
-    norm_sar = sar_dir / np.linalg.norm(sar_dir, axis=0)
+    def ensure_cyx(arr: xr.DataArray) -> xr.DataArray:
+        if arr.shape[0] != 3:
+            comp_dim = [d for d in arr.dims if arr.sizes[d] == 3][0]
+            return arr.transpose(comp_dim, ...)
+        return arr
 
-    dot_product = np.einsum('ijk,ijk->jk', dem_normals, norm_sar)
+    sar_ecef_reshaped = ensure_cyx(sar_ecef)
+    dem_ecef_reshaped = ensure_cyx(dem_ecef)
+
+    dem_normals = calculate_dem_normals_ecef(dem_ecef)
+    los = sar_ecef_reshaped - dem_ecef_reshaped
+    norm_los = los / np.linalg.norm(los, axis=0)
+
+    dot_product = np.einsum('cyx,cyx->yx', dem_normals, norm_los)
     angle_rad = np.arccos(np.clip(dot_product, -1.0, 1.0))
     angle_deg = np.rad2deg(angle_rad)
 
     spatial_dims = dem_ecef.dims[1:]
 
     return xr.DataArray(
-        data=angle_deg
+        data=angle_deg.data,
+        dims=spatial_dims,
+        coords={dim: dem_ecef.coords[dim] for dim in spatial_dims},
+        name="local_incidence_angle",
     )
