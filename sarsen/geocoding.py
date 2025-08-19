@@ -2,7 +2,7 @@
 
 See: https://sentinel.esa.int/documents/247904/0/Guide-to-Sentinel-1-Geocoding.pdf/e0450150-b4e9-4b2d-9b32-dadf989d3bd3
 """
-
+import datetime
 import functools
 import math
 from typing import Any, Callable, TypeVar
@@ -139,8 +139,8 @@ def backward_geocode_simple(
         method: str = "secant",
         orbit_time_prev_shift: float = -0.1,
         maxiter: int = 10,
-        calc_annotation = False,
-) -> tuple[xr.DataArray, xr.DataArray, xr.DataArray, xr.DataArray]:
+        calc_annotation=False,
+) -> tuple[xr.DataArray, xr.DataArray, xr.DataArray, xr.DataArray, xr.DataArray]:
     diff_ufunc = zero_doppler_distance * satellite_speed
     zero_doppler = functools.partial(
         zero_doppler_plane_distance_velocity, dem_ecef, orbit_interpolator
@@ -178,14 +178,16 @@ def backward_geocode_simple(
         )
 
     # sar_ecef = zero_doppler_plane_distance_velocity(dem_ecef, orbit_interpolator, orbit_time_guess)[1][2]
-    elliposid_incidence_angle = None
+    ellipsoid_incidence_angle = None
+    local_incidence_angle = None
     if calc_annotation:
-        elliposid_incidence_angle = calculate_ellipsoid_incidence_angle(
+        ellipsoid_incidence_angle = calculate_ellipsoid_incidence_angle(
             sar_ecef=sar_ecef,
             dem_ecef=dem_ecef
         )
-    # print(f"iterations: {k}")
-    return orbit_time, dem_distance, satellite_velocity, elliposid_incidence_angle
+
+        local_incidence_angle = calculate_local_incidence_angle(dem_ecef, sar_ecef)
+    return orbit_time, dem_distance, satellite_velocity, ellipsoid_incidence_angle, local_incidence_angle
 
 
 def backward_geocode(
@@ -200,14 +202,14 @@ def backward_geocode(
         maxiter: int = 10,
         maxiter_after_seed: int = 1,
         orbit_time_prev_shift: float = -0.1,
-        calc_annotation = False
+        calc_annotation=False
 ) -> xr.Dataset:
     if seed_step is not None:
         dem_ecef_seed = dem_ecef.isel(
             y=slice(seed_step[0] // 2, None, seed_step[0]),
             x=slice(seed_step[1] // 2, None, seed_step[1]),
         )
-        orbit_time_seed, _, _ = backward_geocode_simple(
+        orbit_time_seed, _, _, _, _ = backward_geocode_simple(
             dem_ecef_seed,
             orbit_interpolator,
             orbit_time_guess,
@@ -222,7 +224,7 @@ def backward_geocode(
         )
         maxiter = maxiter_after_seed
 
-    orbit_time, dem_distance, satellite_velocity, ellipsoid_incidence_angle = backward_geocode_simple(
+    orbit_time, dem_distance, satellite_velocity, ellipsoid_incidence_angle, local_incidence_angle = backward_geocode_simple(
         dem_ecef,
         orbit_interpolator,
         orbit_time_guess,
@@ -240,7 +242,8 @@ def backward_geocode(
             "azimuth_time": orbit_interpolator.orbit_time_to_azimuth_time(orbit_time),
             "dem_distance": dem_distance,
             "satellite_velocity": satellite_velocity.transpose(*dem_distance.dims),
-            "ellipsoid_incidence_angle": ellipsoid_incidence_angle
+            "ellipsoid_incidence_angle": ellipsoid_incidence_angle,
+            "local_incidence_angle": local_incidence_angle,
         }
     )
     return acquisition
@@ -285,3 +288,40 @@ def calculate_ellipsoid_incidence_angle(sar_ecef: xr.DataArray, dem_ecef: xr.Dat
 
     ellipsoid_incidence_angle = xr.DataArray(data=data)
     return ellipsoid_incidence_angle
+
+
+def calculate_dem_normals_ecef(dem_ecef: xr.DataArray) -> xr.DataArray:
+    gradient = np.gradient(dem_ecef.values, axis=(1, 2))
+    grad_y = gradient[0]
+    grad_x = gradient[1]
+
+    normals = np.cross(grad_x, grad_y, axis=0)
+
+    norms = np.linalg.norm(normals, axis=0)
+    norms[norms == 0] = 1
+    normals /= norms
+
+    return xr.DataArray(normals, dims=dem_ecef.dims, coords=dem_ecef.coords)
+
+
+def calculate_local_incidence_angle(
+        dem_ecef: xr.DataArray,
+        sar_ecef: xr.DataArray
+) -> xr.DataArray:
+    if sar_ecef.dims != dem_ecef.dims:
+        sar_ecef_reshaped = sar_ecef.transpose(*dem_ecef.dims)
+    else:
+        sar_ecef_reshaped = sar_ecef
+    dem_normals = calculate_dem_normals_ecef(dem_ecef)
+    sar_dir = sar_ecef_reshaped - dem_ecef
+    norm_sar = sar_dir / np.linalg.norm(sar_dir, axis=0)
+
+    dot_product = np.einsum('ijk,ijk->jk', dem_normals, norm_sar)
+    angle_rad = np.arccos(np.clip(dot_product, -1.0, 1.0))
+    angle_deg = np.rad2deg(angle_rad)
+
+    spatial_dims = dem_ecef.dims[1:]
+
+    return xr.DataArray(
+        data=angle_deg
+    )
