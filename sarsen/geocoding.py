@@ -303,21 +303,15 @@ def calculate_ellipsoid_incidence_angle_vectorised(sar_ecef: xr.DataArray, dem_e
     dem_ecef_transposed = dem_ecef.transpose("y", "x", dem_ecef.dims[0])
     sar_dir = sar_ecef - dem_ecef_transposed
 
-    # Normalize the look direction vectors using NumPy's broadcasting
     norm_sar = sar_dir / np.linalg.norm(sar_dir.values, axis=2, keepdims=True)
 
-    # 4. Calculate the angle between the two vector fields
-    # Transpose norm_sar from (y, x, 3) back to (3, y, x) to align with norm_ep
     norm_sar_transposed = norm_sar.transpose(dem_ecef.dims[0], "y", "x")
 
-    # Use einsum for an efficient, element-wise dot product across the grid
     dot_product = np.einsum("ijk,ijk->jk", norm_ep, norm_sar_transposed)
 
-    # Calculate the angle, clipping for numerical stability, and convert to degrees
     angle_rad = np.arccos(np.clip(dot_product, -1.0, 1.0))
     angle_deg = np.rad2deg(angle_rad)
 
-    # 5. Return a properly formatted xarray DataArray
     spatial_dims = dem_ecef.dims[1:]
     return xr.DataArray(
         data=angle_deg.data,
