@@ -16,7 +16,7 @@ SPEED_OF_LIGHT = 299_792_458.0  # m / s
 def make_simulate_acquisition_template(
         template_raster: xr.DataArray,
         correct_radiometry: str | None = None,
-        calc_annotation = False
+        calc_annotation=False
 ) -> xr.Dataset:
     acquisition_template = xr.Dataset(
         data_vars={
@@ -78,7 +78,7 @@ def map_simulate_acquisition(
         orbit_interpolator: orbit.OrbitPolyfitInterpolator,
         template_raster: xr.DataArray | None = None,
         correct_radiometry: str | None = None,
-        calc_annotation = False,
+        calc_annotation=False,
         **kwargs: Any,
 ) -> xr.Dataset:
     if template_raster is None:
@@ -553,8 +553,6 @@ def envisat_terrain_correction(
     return geocoded
 
 
-
-
 def slant_range_time_to_ground_range(azimuth_time: xr.DataArray, slant_range_time: xr.DataArray) -> xr.DataArray:
     """
     Convert slant range time to ground range.
@@ -562,4 +560,3 @@ def slant_range_time_to_ground_range(azimuth_time: xr.DataArray, slant_range_tim
     return datamodel.GroundRangeSarProduct.slant_range_time_to_ground_range(
         azimuth_time, slant_range_time
     )
-

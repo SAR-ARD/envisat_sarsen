@@ -14,6 +14,7 @@ import xarray as xr
 from . import orbit
 
 ArrayLike = TypeVar("ArrayLike", bound=npt.ArrayLike)
+
 FloatArrayLike = TypeVar("FloatArrayLike", bound=npt.ArrayLike)
 
 
@@ -181,7 +182,7 @@ def backward_geocode_simple(
     ellipsoid_incidence_angle = None
     local_incidence_angle = None
     if calc_annotation:
-        ellipsoid_incidence_angle = calculate_ellipsoid_incidence_angle_vectorised(
+        ellipsoid_incidence_angle = calculate_ellipsoid_incidence_angle(
             sar_ecef=sar_ecef,
             dem_ecef=dem_ecef
         )
@@ -249,47 +250,6 @@ def backward_geocode(
 
 
 def calculate_ellipsoid_incidence_angle(sar_ecef: xr.DataArray, dem_ecef: xr.DataArray):
-    block_x = dem_ecef.sizes['x']
-    block_y = dem_ecef.sizes['y']
-    data = np.ndarray((block_y, block_x))
-    data.fill(0.0)
-
-    A = 6378137.0
-    B = 6356752.3142451794975639665996337
-    asq = A * A
-    bsq = B * B
-
-    arr = []
-    for y in range(block_y):
-        # uncomment for testing speedup
-        # TODO this will be improved upon in the next commits to avoid loops in pure python
-        # if y % 50 != 0:
-        #    continue
-        # print(y)
-
-        for x in range(block_x):
-            ecefx = dem_ecef[0].values[y][x]
-            ecefy = dem_ecef[1].values[y][x]
-            ecefz = dem_ecef[2].values[y][x]
-            ep = np.array([ecefx, ecefy, ecefz])
-            sar_pos = np.array(sar_ecef[y][x].values)
-
-            ep_calc = np.array([ecefx / asq, ecefy / asq, ecefz / bsq])
-
-            sar_dir = sar_pos - ep
-
-            norm_ep = ep_calc / np.sqrt(np.sum(ep_calc ** 2))
-            norm_sar = sar_dir / np.sqrt(np.sum(sar_dir ** 2))
-
-            angle_rad = angle_between(norm_ep, norm_sar)
-            deg = 360 * angle_rad / (math.pi * 2)
-            data[y][x] = deg
-
-    ellipsoid_incidence_angle = xr.DataArray(data=data)
-    return ellipsoid_incidence_angle
-
-
-def calculate_ellipsoid_incidence_angle_vectorised(sar_ecef: xr.DataArray, dem_ecef: xr.DataArray):
     A = 6378137.0
     B = 6356752.3142451794975639665996337
     asq = A * A
