@@ -10,13 +10,13 @@ from . import chunking, datamodel, geocoding, orbit, radiometry, scene
 
 logger = logging.getLogger(__name__)
 
-
 SPEED_OF_LIGHT = 299_792_458.0  # m / s
 
 
 def make_simulate_acquisition_template(
-    template_raster: xr.DataArray,
-    correct_radiometry: str | None = None,
+        template_raster: xr.DataArray,
+        correct_radiometry: str | None = None,
+        calc_annotation=False
 ) -> xr.Dataset:
     acquisition_template = xr.Dataset(
         data_vars={
@@ -25,6 +25,12 @@ def make_simulate_acquisition_template(
         }
     )
     include_variables = {"slant_range_time", "azimuth_time"}
+    if calc_annotation:
+        include_variables.add("ellipsoid_incidence_angle")
+        include_variables.add('local_incidence_angle')
+        acquisition_template["ellipsoid_incidence_angle"] = template_raster
+        acquisition_template['local_incidence_angle'] = template_raster
+
     if correct_radiometry is not None:
         acquisition_template["gamma_area"] = template_raster
         include_variables.add("gamma_area")
@@ -33,18 +39,18 @@ def make_simulate_acquisition_template(
 
 
 def simulate_acquisition(
-    dem_ecef: xr.DataArray,
-    orbit_interpolator: orbit.OrbitPolyfitInterpolator,
-    include_variables: Container[str] = (),
-    azimuth_time: xr.DataArray | float = 0.0,
-    **kwargs: Any,
+        dem_ecef: xr.DataArray,
+        orbit_interpolator: orbit.OrbitPolyfitInterpolator,
+        include_variables: Container[str] = (),
+        azimuth_time: xr.DataArray | float = 0.0,
+        **kwargs: Any,
 ) -> xr.Dataset:
     """Compute the image coordinates of the DEM given the satellite orbit."""
-    acquisition = geocoding.backward_geocode(
-        dem_ecef, orbit_interpolator, azimuth_time, **kwargs
-    )
 
-    slant_range = (acquisition.dem_distance**2).sum(dim="axis") ** 0.5
+    calc_annotation = "ellipsoid_incidence_angle" in include_variables
+    acquisition = geocoding.backward_geocode(dem_ecef, orbit_interpolator, calc_annotation=calc_annotation)
+
+    slant_range = (acquisition.dem_distance ** 2).sum(dim="axis") ** 0.5
     slant_range_time = 2.0 / SPEED_OF_LIGHT * slant_range
 
     acquisition["slant_range_time"] = slant_range_time
@@ -68,40 +74,42 @@ def simulate_acquisition(
 
 
 def map_simulate_acquisition(
-    dem_ecef: xr.DataArray,
-    orbit_interpolator: orbit.OrbitPolyfitInterpolator,
-    template_raster: xr.DataArray | None = None,
-    correct_radiometry: str | None = None,
-    **kwargs: Any,
+        dem_ecef: xr.DataArray,
+        orbit_interpolator: orbit.OrbitPolyfitInterpolator,
+        template_raster: xr.DataArray | None = None,
+        correct_radiometry: str | None = None,
+        calc_annotation=False,
+        **kwargs: Any,
 ) -> xr.Dataset:
     if template_raster is None:
         template_raster = dem_ecef.isel(axis=0).drop_vars(["axis", "spatial_ref"]) * 0.0
     acquisition_template = make_simulate_acquisition_template(
-        template_raster, correct_radiometry
+        template_raster, correct_radiometry, calc_annotation
     )
+
     acquisition = xr.map_blocks(
         simulate_acquisition,
         dem_ecef,
         kwargs={
-            "orbit_interpolator": orbit_interpolator,
-            "include_variables": list(acquisition_template.data_vars),
-        }
-        | kwargs,
+                   "orbit_interpolator": orbit_interpolator,
+                   "include_variables": list(acquisition_template.data_vars),
+               }
+               | kwargs,
         template=acquisition_template,
     )
     return acquisition
 
 
 def do_terrain_correction(
-    product: datamodel.SarProduct,
-    dem_raster: xr.DataArray,
-    convert_to_dem_ecef_kwargs: dict[str, Any] = {},
-    correct_radiometry: str | None = None,
-    interp_method: xr.core.types.InterpOptions = "nearest",
-    grouping_area_factor: tuple[float, float] = (3.0, 3.0),
-    radiometry_chunks: int = 2048,
-    radiometry_bound: int = 128,
-    seed_step: tuple[int, int] | None = None,
+        product: datamodel.SarProduct,
+        dem_raster: xr.DataArray,
+        convert_to_dem_ecef_kwargs: dict[str, Any] = {},
+        correct_radiometry: str | None = None,
+        interp_method: xr.core.types.InterpOptions = "nearest",
+        grouping_area_factor: tuple[float, float] = (3.0, 3.0),
+        radiometry_chunks: int = 2048,
+        radiometry_bound: int = 128,
+        seed_step: tuple[int, int] | None = None,
 ) -> tuple[xr.DataArray, xr.DataArray | None]:
     logger.info("pre-process DEM")
 
@@ -176,24 +184,24 @@ def do_terrain_correction(
     geocoded.y.attrs.update(dem_ecef.y.attrs)
     geocoded.rio.write_crs(dem_ecef.rio.crs, inplace=True)
 
-    return geocoded, simulated_beta_nought
+    return geocoded, simulated_beta_nought, acquisition
 
 
 def terrain_correction(
-    product: datamodel.SarProduct,
-    dem_urlpath: str,
-    output_urlpath: str | None = "GTC.tif",
-    simulated_urlpath: str | None = None,
-    correct_radiometry: str | None = None,
-    interp_method: xr.core.types.InterpOptions = "nearest",
-    grouping_area_factor: tuple[float, float] = (3.0, 3.0),
-    open_dem_raster_kwargs: dict[str, Any] = {},
-    chunks: int | None = 1024,
-    radiometry_chunks: int = 2048,
-    radiometry_bound: int = 128,
-    enable_dask_distributed: bool = False,
-    client_kwargs: dict[str, Any] = {"processes": False},
-    seed_step: tuple[int, int] | None = None,
+        product: datamodel.SarProduct,
+        dem_urlpath: str,
+        output_urlpath: str | None = "GTC.tif",
+        simulated_urlpath: str | None = None,
+        correct_radiometry: str | None = None,
+        interp_method: xr.core.types.InterpOptions = "nearest",
+        grouping_area_factor: tuple[float, float] = (3.0, 3.0),
+        open_dem_raster_kwargs: dict[str, Any] = {},
+        chunks: int | None = 1024,
+        radiometry_chunks: int = 2048,
+        radiometry_bound: int = 128,
+        enable_dask_distributed: bool = False,
+        client_kwargs: dict[str, Any] = {"processes": False},
+        seed_step: tuple[int, int] | None = None,
 ) -> xr.DataArray:
     """Apply the terrain-correction to sentinel-1 SLC and GRD products.
 
@@ -254,7 +262,7 @@ def terrain_correction(
         dem_urlpath, chunks=chunks, **open_dem_raster_kwargs
     )
 
-    geocoded, simulated_beta_nought = do_terrain_correction(
+    geocoded, simulated_beta_nought, extra_layers = do_terrain_correction(
         product=product,
         dem_raster=dem_raster,
         correct_radiometry=correct_radiometry,
@@ -308,20 +316,22 @@ def terrain_correction(
 
     return geocoded
 
+
 def envisat_terrain_correction(
-    product: datamodel.SarProduct,
-    dem_urlpath: str,
-    output_urlpath: Optional[str] = "GTC.tif",
-    simulated_urlpath: Optional[str] = None,
-    correct_radiometry: Optional[str] = None,
-    interp_method: xr.core.types.InterpOptions = "nearest",
-    grouping_area_factor: Tuple[float, float] = (3.0, 3.0),
-    open_dem_raster_kwargs: Dict[str, Any] = {},
-    chunks: Optional[int] = 1024,
-    radiometry_chunks: int = 2048,
-    radiometry_bound: int = 128,
-    enable_dask_distributed: bool = False,
-    client_kwargs: Dict[str, Any] = {"processes": False},
+        product: datamodel.SarProduct,
+        dem_urlpath: str,
+        output_urlpath: Optional[str] = "GTC.tif",
+        layers_urlpath: Optional[str] = None,
+        simulated_urlpath: Optional[str] = None,
+        correct_radiometry: Optional[str] = None,
+        interp_method: xr.core.types.InterpOptions = "nearest",
+        grouping_area_factor: Tuple[float, float] = (3.0, 3.0),
+        open_dem_raster_kwargs: Dict[str, Any] = {},
+        chunks: Optional[int] = 1024,
+        radiometry_chunks: int = 2048,
+        radiometry_bound: int = 128,
+        enable_dask_distributed: bool = False,
+        client_kwargs: Dict[str, Any] = {"processes": False},
 ) -> xr.DataArray:
     """Apply the terrain-correction to sentinel-1 SLC and GRD products.
 
@@ -413,7 +423,8 @@ def envisat_terrain_correction(
         dem_ecef,
         orbit_interpolator,
         template_raster,
-        correct_radiometry
+        correct_radiometry,
+        layers_urlpath != None,
     )
 
     if correct_radiometry is not None:
@@ -474,8 +485,6 @@ def envisat_terrain_correction(
     else:
         interp_kwargs = {"slant_range_time": acquisition.slant_range_time}
 
-
-    print("ENVI DIMS = ")
     with mock.patch("xarray.core.missing._localize", lambda o, i: (o, i)):
         geocoded = beta_nought.interp(
             method=interp_method,
@@ -511,9 +520,7 @@ def envisat_terrain_correction(
     #         **out_profile,
     #     )
 
-    #test.compute()
-
-
+    # test.compute()
 
     maybe_delayed = geocoded.rio.to_raster(
         output_urlpath,
@@ -526,21 +533,30 @@ def envisat_terrain_correction(
         **to_raster_kwargs,
     )
 
+    # write if urlpath is specified
+    if layers_urlpath:
+        layers_dataset = acquisition.drop_vars("azimuth_time")
+        layers_dataset.rio.to_raster(
+            layers_urlpath,
+            dtype=np.float32,
+            tiled=True,
+            blockxsize=output_chunks,
+            blockysize=output_chunks,
+            compress="ZSTD",
+            num_threads="ALL_CPUS",
+            **to_raster_kwargs,
+        )
+
     if enable_dask_distributed:
         maybe_delayed.compute()
 
     return geocoded
 
-def fun_grsr():
-    """
-    Function to return the slant_range_time_to_ground_range function
-    """
-    def slant_range_time_to_ground_range(azimuth_time: xr.DataArray, slant_range_time: xr.DataArray) -> xr.DataArray:
-        """
-        Convert slant range time to ground range.
-        """
-        return datamodel.GroundRangeSarProduct.slant_range_time_to_ground_range(
-            azimuth_time, slant_range_time
-        )
 
-    return slant_range_time_to_ground_range
+def slant_range_time_to_ground_range(azimuth_time: xr.DataArray, slant_range_time: xr.DataArray) -> xr.DataArray:
+    """
+    Convert slant range time to ground range.
+    """
+    return datamodel.GroundRangeSarProduct.slant_range_time_to_ground_range(
+        azimuth_time, slant_range_time
+    )
