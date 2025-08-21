@@ -34,6 +34,35 @@ def make_orbit(azimuth_time: List[Any],
 
     return ds
 
+def azimuth_slant_range_grid(
+    attrs: dict[str, Any],
+    grouping_area_factor: tuple[float, float] = (3.0, 3.0),
+) -> dict[str, Any]:
+    if attrs["product_type"] == "SLC":
+        slant_range_spacing_m = (
+            attrs["range_pixel_spacing"]
+            * np.sin(attrs["incidence_angle_mid_swath"])
+            * grouping_area_factor[1]
+        )
+    else:
+        slant_range_spacing_m = attrs["range_pixel_spacing"] * grouping_area_factor[1]
+
+    c = 299792458
+    slant_range_time_interval_s = (
+        slant_range_spacing_m * 2 / c  # ignore type
+    )
+
+    grid_parameters: dict[str, Any] = {
+        "slant_range_time0": attrs["image_slant_range_time"],
+        "slant_range_time_interval_s": slant_range_time_interval_s,
+        "slant_range_spacing_m": slant_range_spacing_m,
+        "azimuth_time0": np.datetime64(attrs["product_first_line_utc_time"]),
+        "azimuth_time_interval_s": attrs["azimuth_time_interval"]
+        * grouping_area_factor[0],
+        "azimuth_spacing_m": attrs["azimuth_pixel_spacing"] * grouping_area_factor[0],
+    }
+    return grid_parameters
+
 
 class EnvisatProduct:
     measurement: xr.Dataset | None = None
@@ -56,11 +85,11 @@ class EnvisatProduct:
         cal_vector = self.measurement.metadata["direct_parse"]["cal_vector"]
         return (np.power(np.abs(self.measurement), 2) / cal_factor) * cal_vector
 
-    # def grid_parameters(
-    #         self,
-    #         grouping_area_factor: tuple[float, float] = (3.0, 3.0),
-    # ) -> dict[str, Any]:
-    #     return dict()
+    def grid_parameters(
+        self,
+        grouping_area_factor: tuple[float, float] = (3.0, 3.0),
+    ) -> dict[str, Any]:
+        return azimuth_slant_range_grid(self.measurement.attrs, grouping_area_factor)
 
     def state_vectors(self):
         return self.osv
@@ -125,7 +154,8 @@ class EnvisatProduct:
                 velocities[1].append(vel_y)
                 velocities[2].append(vel_z)
             
-            assert(len(azimuth_times) > 5)
+            if len(azimuth_times) <= 5:
+                raise RuntimeError("Not enough OSV points parsed from {}\n", osv_file) 
 
         else:
 
