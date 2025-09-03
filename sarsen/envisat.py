@@ -65,9 +65,6 @@ def azimuth_slant_range_grid(
 
 
 class EnvisatProduct:
-    measurement: xr.Dataset | None = None
-    osv: xr.Dataset | None = None
-    product_type: str = 'SLC'
 
     def __init__(self, path: str, osv_file=None, *args: Any, **kwargs: Any) -> None:
         """
@@ -78,6 +75,7 @@ class EnvisatProduct:
         super().__init__(*args, **kwargs)
         self.path = path
         self.measurement = xr.open_dataset(path, engine='asar')
+        self.product_type = self.measurement.product_type
         self.osv = self.compute_osv(osv_file)
 
     def beta_nought(self) -> xr.DataArray:

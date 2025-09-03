@@ -480,16 +480,11 @@ def envisat_terrain_correction(
 
     logger.info("terrain-correct image")
 
-    if product.product_type == "GRD":
-        interp_kwargs = {"ground_range": acquisition.ground_range}
-    else:
-        interp_kwargs = {"slant_range_time": acquisition.slant_range_time}
-
     with mock.patch("xarray.core.missing._localize", lambda o, i: (o, i)):
         geocoded = beta_nought.interp(
             method=interp_method,
             azimuth_time=acquisition.azimuth_time,
-            **interp_kwargs,
+            slant_range_time=acquisition.slant_range_time
         )
 
     if correct_radiometry is not None:
