@@ -27,9 +27,9 @@ def make_simulate_acquisition_template(
     include_variables = {"slant_range_time", "azimuth_time"}
     if calc_annotation:
         include_variables.add("ellipsoid_incidence_angle")
-        include_variables.add("local_incidence_angle")
+        include_variables.add('local_incidence_angle')
         acquisition_template["ellipsoid_incidence_angle"] = template_raster
-        acquisition_template["local_incidence_angle"] = template_raster
+        acquisition_template['local_incidence_angle'] = template_raster
 
     if correct_radiometry is not None:
         acquisition_template["gamma_area"] = template_raster
