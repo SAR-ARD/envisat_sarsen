@@ -23,9 +23,9 @@ def unit_vector(vector):
 
 
 def angle_between(v1, v2):
-    """Returns the angle in radians between vectors 'v1' and 'v2'::
-        >>> angle_between((1, 0, 0), (0, 1, 0))
-        1.5707963267948966
+    """Return the angle in radians between vectors 'v1' and 'v2'.
+
+        >>> angle_between((1, 0, 0), (0, 1, 0)) ->1.5707963267948966
     """
     v1_u = unit_vector(v1)
     v2_u = unit_vector(v2)
@@ -224,7 +224,9 @@ def backward_geocode(
         )
         maxiter = maxiter_after_seed
 
-    orbit_time, dem_distance, satellite_velocity, ellipsoid_incidence_angle, local_incidence_angle = backward_geocode_simple(
+    (orbit_time, dem_distance,
+     satellite_velocity, ellipsoid_incidence_angle,
+     local_incidence_angle) = backward_geocode_simple(
         dem_ecef,
         orbit_interpolator,
         orbit_time_guess,

@@ -424,7 +424,7 @@ def envisat_terrain_correction(
         orbit_interpolator,
         template_raster,
         correct_radiometry,
-        layers_urlpath != None,
+        layers_urlpath is not None,
     )
 
     if correct_radiometry is not None:
@@ -548,10 +548,10 @@ def envisat_terrain_correction(
     return geocoded
 
 
-def slant_range_time_to_ground_range(azimuth_time: xr.DataArray, slant_range_time: xr.DataArray) -> xr.DataArray:
-    """
-    Convert slant range time to ground range.
-    """
+def slant_range_time_to_ground_range(
+        azimuth_time: xr.DataArray,
+        slant_range_time: xr.DataArray) -> xr.DataArray:
+    """Convert slant range time to ground range."""
     return datamodel.GroundRangeSarProduct.slant_range_time_to_ground_range(
         azimuth_time, slant_range_time
     )

@@ -32,5 +32,6 @@ __all__ = [
     "Sentinel1SarProduct",
     "SlantRangeSarProduct",
     "terrain_correction",
-    "EnvisatProduct"
+    "EnvisatProduct",
+    "envisat_terrain_correction"
 ]
