@@ -2,9 +2,8 @@
 
 See: https://sentinel.esa.int/documents/247904/0/Guide-to-Sentinel-1-Geocoding.pdf/e0450150-b4e9-4b2d-9b32-dadf989d3bd3
 """
-import datetime
+
 import functools
-import math
 from typing import Any, Callable, TypeVar
 
 import numpy as np
@@ -25,7 +24,7 @@ def unit_vector(vector):
 def angle_between(v1, v2):
     """Return the angle in radians between vectors 'v1' and 'v2'.
 
-        >>> angle_between((1, 0, 0), (0, 1, 0)) ->1.5707963267948966
+    >>> angle_between((1, 0, 0), (0, 1, 0)) ->1.5707963267948966
     """
     v1_u = unit_vector(v1)
     v2_u = unit_vector(v2)
@@ -33,12 +32,12 @@ def angle_between(v1, v2):
 
 
 def secant_method(
-        ufunc: Callable[[ArrayLike], tuple[FloatArrayLike, Any]],
-        t_prev: ArrayLike,
-        t_curr: ArrayLike,
-        diff_ufunc: float = 1.0,
-        diff_t: Any = 1e-6,
-        maxiter: int = 10,
+    ufunc: Callable[[ArrayLike], tuple[FloatArrayLike, Any]],
+    t_prev: ArrayLike,
+    t_curr: ArrayLike,
+    diff_ufunc: float = 1.0,
+    diff_t: Any = 1e-6,
+    maxiter: int = 10,
 ) -> tuple[ArrayLike, ArrayLike, FloatArrayLike, int, Any]:
     """Return the root of ufunc calculated using the secant method."""
     # implementation modified from https://en.wikipedia.org/wiki/Secant_method
@@ -70,12 +69,12 @@ def secant_method(
 
 
 def newton_raphson_method(
-        ufunc: Callable[[ArrayLike], tuple[FloatArrayLike, Any]],
-        ufunc_prime: Callable[[ArrayLike, Any], FloatArrayLike],
-        t_curr: ArrayLike,
-        diff_ufunc: float = 1.0,
-        diff_t: Any = 1e-6,
-        maxiter: int = 10,
+    ufunc: Callable[[ArrayLike], tuple[FloatArrayLike, Any]],
+    ufunc_prime: Callable[[ArrayLike, Any], FloatArrayLike],
+    t_curr: ArrayLike,
+    diff_ufunc: float = 1.0,
+    diff_t: Any = 1e-6,
+    maxiter: int = 10,
 ) -> tuple[ArrayLike, FloatArrayLike, int, Any]:
     """Return the root of ufunc calculated using the Newton method."""
     # implementation based on https://en.wikipedia.org/wiki/Newton%27s_method
@@ -103,10 +102,10 @@ def newton_raphson_method(
 
 
 def zero_doppler_plane_distance_velocity(
-        dem_ecef: xr.DataArray,
-        orbit_interpolator: orbit.OrbitPolyfitInterpolator,
-        orbit_time: xr.DataArray,
-        dim: str = "axis",
+    dem_ecef: xr.DataArray,
+    orbit_interpolator: orbit.OrbitPolyfitInterpolator,
+    orbit_time: xr.DataArray,
+    dim: str = "axis",
 ) -> tuple[xr.DataArray, tuple[xr.DataArray, xr.DataArray, xr.DataArray]]:
     sar_ecef = orbit_interpolator.position_from_orbit_time(orbit_time)
     dem_distance = dem_ecef - orbit_interpolator.position_from_orbit_time(orbit_time)
@@ -116,31 +115,31 @@ def zero_doppler_plane_distance_velocity(
 
 
 def zero_doppler_plane_distance_velocity_prime(
-        orbit_interpolator: orbit.OrbitPolyfitInterpolator,
-        orbit_time: xr.DataArray,
-        payload: tuple[xr.DataArray, xr.DataArray, xr.DataArray],
-        dim: str = "axis",
+    orbit_interpolator: orbit.OrbitPolyfitInterpolator,
+    orbit_time: xr.DataArray,
+    payload: tuple[xr.DataArray, xr.DataArray, xr.DataArray],
+    dim: str = "axis",
 ) -> xr.DataArray:
     dem_distance, satellite_velocity, sar_ecef = payload
 
     plane_distance_velocity_prime = (
-            dem_distance * orbit_interpolator.acceleration_from_orbit_time(orbit_time)
-            - satellite_velocity ** 2
+        dem_distance * orbit_interpolator.acceleration_from_orbit_time(orbit_time)
+        - satellite_velocity**2
     ).sum(dim)
     return plane_distance_velocity_prime
 
 
 def backward_geocode_simple(
-        dem_ecef: xr.DataArray,
-        orbit_interpolator: orbit.OrbitPolyfitInterpolator,
-        orbit_time_guess: xr.DataArray | float = 0.0,
-        dim: str = "axis",
-        zero_doppler_distance: float = 1.0,
-        satellite_speed: float = 7_500.0,
-        method: str = "secant",
-        orbit_time_prev_shift: float = -0.1,
-        maxiter: int = 10,
-        calc_annotation=False,
+    dem_ecef: xr.DataArray,
+    orbit_interpolator: orbit.OrbitPolyfitInterpolator,
+    orbit_time_guess: xr.DataArray | float = 0.0,
+    dim: str = "axis",
+    zero_doppler_distance: float = 1.0,
+    satellite_speed: float = 7_500.0,
+    method: str = "secant",
+    orbit_time_prev_shift: float = -0.1,
+    maxiter: int = 10,
+    calc_annotation=False,
 ) -> tuple[xr.DataArray, xr.DataArray, xr.DataArray, xr.DataArray, xr.DataArray]:
     diff_ufunc = zero_doppler_distance * satellite_speed
     zero_doppler = functools.partial(
@@ -159,23 +158,27 @@ def backward_geocode_simple(
 
     if method == "secant":
         orbit_time_guess_prev = orbit_time_guess + orbit_time_prev_shift
-        orbit_time, _, _, k, (dem_distance, satellite_velocity, sar_ecef) = secant_method(
-            zero_doppler,
-            orbit_time_guess_prev,
-            orbit_time_guess,
-            diff_ufunc,
-            maxiter=maxiter,
+        orbit_time, _, _, k, (dem_distance, satellite_velocity, sar_ecef) = (
+            secant_method(
+                zero_doppler,
+                orbit_time_guess_prev,
+                orbit_time_guess,
+                diff_ufunc,
+                maxiter=maxiter,
+            )
         )
     elif method in {"newton", "newton_raphson"}:
         zero_doppler_prime = functools.partial(
             zero_doppler_plane_distance_velocity_prime, orbit_interpolator
         )
-        orbit_time, _, k, (dem_distance, satellite_velocity, sar_ecef) = newton_raphson_method(
-            zero_doppler,
-            zero_doppler_prime,
-            orbit_time_guess,
-            diff_ufunc,
-            maxiter=maxiter,
+        orbit_time, _, k, (dem_distance, satellite_velocity, sar_ecef) = (
+            newton_raphson_method(
+                zero_doppler,
+                zero_doppler_prime,
+                orbit_time_guess,
+                diff_ufunc,
+                maxiter=maxiter,
+            )
         )
 
     # sar_ecef = zero_doppler_plane_distance_velocity(dem_ecef, orbit_interpolator, orbit_time_guess)[1][2]
@@ -183,26 +186,31 @@ def backward_geocode_simple(
     local_incidence_angle = None
     if calc_annotation:
         ellipsoid_incidence_angle = calculate_ellipsoid_incidence_angle(
-            sar_ecef=sar_ecef,
-            dem_ecef=dem_ecef
+            sar_ecef=sar_ecef, dem_ecef=dem_ecef
         )
         local_incidence_angle = calculate_local_incidence_angle(dem_ecef, sar_ecef)
-    return orbit_time, dem_distance, satellite_velocity, ellipsoid_incidence_angle, local_incidence_angle
+    return (
+        orbit_time,
+        dem_distance,
+        satellite_velocity,
+        ellipsoid_incidence_angle,
+        local_incidence_angle,
+    )
 
 
 def backward_geocode(
-        dem_ecef: xr.DataArray,
-        orbit_interpolator: orbit.OrbitPolyfitInterpolator,
-        orbit_time_guess: xr.DataArray | float = 0.0,
-        dim: str = "axis",
-        zero_doppler_distance: float = 1.0,
-        satellite_speed: float = 7_500.0,
-        method: str = "newton",
-        seed_step: tuple[int, int] | None = None,
-        maxiter: int = 10,
-        maxiter_after_seed: int = 1,
-        orbit_time_prev_shift: float = -0.1,
-        calc_annotation=False
+    dem_ecef: xr.DataArray,
+    orbit_interpolator: orbit.OrbitPolyfitInterpolator,
+    orbit_time_guess: xr.DataArray | float = 0.0,
+    dim: str = "axis",
+    zero_doppler_distance: float = 1.0,
+    satellite_speed: float = 7_500.0,
+    method: str = "newton",
+    seed_step: tuple[int, int] | None = None,
+    maxiter: int = 10,
+    maxiter_after_seed: int = 1,
+    orbit_time_prev_shift: float = -0.1,
+    calc_annotation=False,
 ) -> xr.Dataset:
     if seed_step is not None:
         dem_ecef_seed = dem_ecef.isel(
@@ -224,9 +232,13 @@ def backward_geocode(
         )
         maxiter = maxiter_after_seed
 
-    (orbit_time, dem_distance,
-     satellite_velocity, ellipsoid_incidence_angle,
-     local_incidence_angle) = backward_geocode_simple(
+    (
+        orbit_time,
+        dem_distance,
+        satellite_velocity,
+        ellipsoid_incidence_angle,
+        local_incidence_angle,
+    ) = backward_geocode_simple(
         dem_ecef,
         orbit_interpolator,
         orbit_time_guess,
@@ -236,7 +248,7 @@ def backward_geocode(
         method,
         maxiter=maxiter,
         orbit_time_prev_shift=orbit_time_prev_shift,
-        calc_annotation=calc_annotation
+        calc_annotation=calc_annotation,
     )
 
     acquisition = xr.Dataset(
@@ -306,12 +318,13 @@ def calculate_dem_normals_ecef(dem_ecef: xr.DataArray) -> xr.DataArray:
     sign[sign == 0] = 1  # Avoid zero division
     normals *= sign
 
-    return xr.DataArray(normals, dims=dem_ecef_reshaped.dims, coords=dem_ecef_reshaped.coords)
+    return xr.DataArray(
+        normals, dims=dem_ecef_reshaped.dims, coords=dem_ecef_reshaped.coords
+    )
 
 
 def calculate_local_incidence_angle(
-        dem_ecef: xr.DataArray,
-        sar_ecef: xr.DataArray
+    dem_ecef: xr.DataArray, sar_ecef: xr.DataArray
 ) -> xr.DataArray:
     def ensure_cyx(arr: xr.DataArray) -> xr.DataArray:
         if arr.shape[0] != 3:
@@ -326,7 +339,7 @@ def calculate_local_incidence_angle(
     los = sar_ecef_reshaped - dem_ecef_reshaped
     norm_los = los / np.linalg.norm(los, axis=0)
 
-    dot_product = np.einsum('cyx,cyx->yx', dem_normals, norm_los)
+    dot_product = np.einsum("cyx,cyx->yx", dem_normals, norm_los)
     angle_rad = np.arccos(np.clip(dot_product, -1.0, 1.0))
     angle_deg = np.rad2deg(angle_rad)
 

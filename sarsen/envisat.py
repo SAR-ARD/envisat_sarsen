@@ -1,27 +1,25 @@
 """Envisat product and utilities."""
-from abc import ABC
-from typing import Any, List, Dict
+
+import datetime
+from typing import Any, Dict, List
 
 import numpy as np
-import pandas as pd
-import scipy.constants
-import datetime
-
 import xarray as xr
 
 
-def make_orbit(azimuth_time: List[Any],
-               positions: List[List[Any]],
-               velocities: List[List[Any]],
-               attrs: Dict[str, Any] = {},
-               ) -> xr.DataArray:
+def make_orbit(
+    azimuth_time: List[Any],
+    positions: List[List[Any]],
+    velocities: List[List[Any]],
+    attrs: Dict[str, Any] = {},
+) -> xr.DataArray:
     position = xr.Variable(data=positions, dims=("axis", "azimuth_time"))  # type: ignore
 
     ds = xr.DataArray(
         data=position,
         attrs=attrs,
         coords={
-            "azimuth_time": [np.datetime64(dt, 'ns') for dt in azimuth_time],
+            "azimuth_time": [np.datetime64(dt, "ns") for dt in azimuth_time],
             "axis": [0, 1, 2],
         },
     )
@@ -30,21 +28,21 @@ def make_orbit(azimuth_time: List[Any],
 
 
 def azimuth_slant_range_grid(
-        attrs: dict[str, Any],
-        grouping_area_factor: tuple[float, float] = (3.0, 3.0),
+    attrs: dict[str, Any],
+    grouping_area_factor: tuple[float, float] = (3.0, 3.0),
 ) -> dict[str, Any]:
     if attrs["product_type"] == "SLC":
         slant_range_spacing_m = (
-                attrs["range_pixel_spacing"]
-                * np.sin(attrs["incidence_angle_mid_swath"])
-                * grouping_area_factor[1]
+            attrs["range_pixel_spacing"]
+            * np.sin(attrs["incidence_angle_mid_swath"])
+            * grouping_area_factor[1]
         )
     else:
         slant_range_spacing_m = attrs["range_pixel_spacing"] * grouping_area_factor[1]
 
     c = 299792458
     slant_range_time_interval_s = (
-            slant_range_spacing_m * 2 / c  # ignore type
+        slant_range_spacing_m * 2 / c  # ignore type
     )
 
     grid_parameters: dict[str, Any] = {
@@ -53,14 +51,13 @@ def azimuth_slant_range_grid(
         "slant_range_spacing_m": slant_range_spacing_m,
         "azimuth_time0": np.datetime64(attrs["product_first_line_utc_time"]),
         "azimuth_time_interval_s": attrs["azimuth_time_interval"]
-                                   * grouping_area_factor[0],
+        * grouping_area_factor[0],
         "azimuth_spacing_m": attrs["azimuth_pixel_spacing"] * grouping_area_factor[0],
     }
     return grid_parameters
 
 
 class EnvisatProduct:
-
     def __init__(self, path: str, osv_file=None, *args: Any, **kwargs: Any) -> None:
         """
         Initialize an Envisat product.
@@ -69,7 +66,7 @@ class EnvisatProduct:
         """
         super().__init__(*args, **kwargs)
         self.path = path
-        self.measurement = xr.open_dataset(path, engine='asar')
+        self.measurement = xr.open_dataset(path, engine="asar")
         self.product_type = self.measurement.product_type
         self.osv = self.compute_osv(osv_file)
 
@@ -79,8 +76,8 @@ class EnvisatProduct:
         return (np.power(np.abs(self.measurement), 2) / cal_factor) * cal_vector
 
     def grid_parameters(
-            self,
-            grouping_area_factor: tuple[float, float] = (3.0, 3.0),
+        self,
+        grouping_area_factor: tuple[float, float] = (3.0, 3.0),
     ) -> dict[str, Any]:
         return azimuth_slant_range_grid(self.measurement.attrs, grouping_area_factor)
 
@@ -93,7 +90,6 @@ class EnvisatProduct:
         return beta_nought
 
     def compute_osv(self, osv_file=None):
-
         azimuth_times: List[Any] = []
         positions: List[List[Any]] = [[], [], []]
         velocities: List[List[Any]] = [[], [], []]
@@ -108,7 +104,9 @@ class EnvisatProduct:
             orbit_lines = orbit_content.split("\n")
 
             first_line_time = self.measurement.attrs["metadata"]["first_line_time"]
-            first_line_dt = datetime.datetime.strptime(str(first_line_time)[:-3], '%Y-%m-%dT%H:%M:%S.%f')
+            first_line_dt = datetime.datetime.strptime(
+                str(first_line_time)[:-3], "%Y-%m-%dT%H:%M:%S.%f"
+            )
 
             osv_time_delta = 8
 
@@ -119,7 +117,9 @@ class EnvisatProduct:
                 if len(elems) < 10:
                     continue
                 orbit_dt = elems[0] + " " + elems[1]
-                osv_timestamp = datetime.datetime.strptime(orbit_dt, "%d-%b-%Y %H:%M:%S.%f")
+                osv_timestamp = datetime.datetime.strptime(
+                    orbit_dt, "%d-%b-%Y %H:%M:%S.%f"
+                )
 
                 if osv_timestamp < start_time or osv_timestamp > end_time:
                     continue
@@ -145,8 +145,9 @@ class EnvisatProduct:
                 raise RuntimeError("Not enough OSV points parsed from {}\n", osv_file)
 
         else:
-
-            osv = self.measurement.attrs['metadata']["records"]["main_processing_params"]["orbit_state_vectors"]
+            osv = self.measurement.attrs["metadata"]["records"][
+                "main_processing_params"
+            ]["orbit_state_vectors"]
 
             azimuth_times: List[Any] = []
             positions: List[List[Any]] = [[], [], []]

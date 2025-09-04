@@ -20,10 +20,10 @@ except ImportError:  # pragma: no cover
     # Local copy or not installed with setuptools
     __version__ = "999"
 
-from .apps import terrain_correction, envisat_terrain_correction
+from .apps import envisat_terrain_correction, terrain_correction
 from .datamodel import GroundRangeSarProduct, SarProduct, SlantRangeSarProduct
-from .sentinel1 import Sentinel1SarProduct
 from .envisat import EnvisatProduct
+from .sentinel1 import Sentinel1SarProduct
 
 __all__ = [
     "__version__",
@@ -33,5 +33,5 @@ __all__ = [
     "SlantRangeSarProduct",
     "terrain_correction",
     "EnvisatProduct",
-    "envisat_terrain_correction"
+    "envisat_terrain_correction",
 ]
