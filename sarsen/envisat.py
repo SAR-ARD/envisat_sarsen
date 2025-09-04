@@ -9,9 +9,6 @@ import datetime
 
 import xarray as xr
 
-import sarsen
-from sarsen import datamodel
-
 
 def make_orbit(azimuth_time: List[Any],
                positions: List[List[Any]],
@@ -19,7 +16,6 @@ def make_orbit(azimuth_time: List[Any],
                attrs: Dict[str, Any] = {},
                ) -> xr.DataArray:
     position = xr.Variable(data=positions, dims=("axis", "azimuth_time"))  # type: ignore
-    velocity = xr.Variable(data=velocities, dims=("axis", "azimuth_time"))  # type: ignore
 
     ds = xr.DataArray(
         data=position,
@@ -29,27 +25,26 @@ def make_orbit(azimuth_time: List[Any],
             "axis": [0, 1, 2],
         },
     )
-    # for data_var in ds.data_vars:
-    #     ds[data_var].attrs = attrs
 
     return ds
 
+
 def azimuth_slant_range_grid(
-    attrs: dict[str, Any],
-    grouping_area_factor: tuple[float, float] = (3.0, 3.0),
+        attrs: dict[str, Any],
+        grouping_area_factor: tuple[float, float] = (3.0, 3.0),
 ) -> dict[str, Any]:
     if attrs["product_type"] == "SLC":
         slant_range_spacing_m = (
-            attrs["range_pixel_spacing"]
-            * np.sin(attrs["incidence_angle_mid_swath"])
-            * grouping_area_factor[1]
+                attrs["range_pixel_spacing"]
+                * np.sin(attrs["incidence_angle_mid_swath"])
+                * grouping_area_factor[1]
         )
     else:
         slant_range_spacing_m = attrs["range_pixel_spacing"] * grouping_area_factor[1]
 
     c = 299792458
     slant_range_time_interval_s = (
-        slant_range_spacing_m * 2 / c  # ignore type
+            slant_range_spacing_m * 2 / c  # ignore type
     )
 
     grid_parameters: dict[str, Any] = {
@@ -58,7 +53,7 @@ def azimuth_slant_range_grid(
         "slant_range_spacing_m": slant_range_spacing_m,
         "azimuth_time0": np.datetime64(attrs["product_first_line_utc_time"]),
         "azimuth_time_interval_s": attrs["azimuth_time_interval"]
-        * grouping_area_factor[0],
+                                   * grouping_area_factor[0],
         "azimuth_spacing_m": attrs["azimuth_pixel_spacing"] * grouping_area_factor[0],
     }
     return grid_parameters
@@ -84,19 +79,13 @@ class EnvisatProduct:
         return (np.power(np.abs(self.measurement), 2) / cal_factor) * cal_vector
 
     def grid_parameters(
-        self,
-        grouping_area_factor: tuple[float, float] = (3.0, 3.0),
+            self,
+            grouping_area_factor: tuple[float, float] = (3.0, 3.0),
     ) -> dict[str, Any]:
         return azimuth_slant_range_grid(self.measurement.attrs, grouping_area_factor)
 
     def state_vectors(self):
         return self.osv
-
-    # def interp_sar(
-    #         self,
-    #         *args: Any, **kwargs: Any
-    # ) -> xr.DataArray:
-    #     return sarsen.SlantRangeSarProduct.interp_sar(self, *args, **kwargs)
 
     def complex_amplitude(self) -> xr.DataArray:
         beta_nought = self.beta_nought()
@@ -111,15 +100,15 @@ class EnvisatProduct:
 
         if osv_file:
             # osv file passed as argument, parse a DORVOR Envisat orbit file
-            orbit_content = None 
+            orbit_content = None
             with open(osv_file, "r") as fp:
                 orbit_content = fp.read()
-            
+
             orbit_content = orbit_content[1625:]
             orbit_lines = orbit_content.split("\n")
 
             first_line_time = self.measurement.attrs["metadata"]["first_line_time"]
-            first_line_dt = datetime.datetime.strptime(str(first_line_time)[:-3],'%Y-%m-%dT%H:%M:%S.%f')
+            first_line_dt = datetime.datetime.strptime(str(first_line_time)[:-3], '%Y-%m-%dT%H:%M:%S.%f')
 
             osv_time_delta = 8
 
@@ -151,9 +140,9 @@ class EnvisatProduct:
                 velocities[0].append(vel_x)
                 velocities[1].append(vel_y)
                 velocities[2].append(vel_z)
-            
+
             if len(azimuth_times) <= 5:
-                raise RuntimeError("Not enough OSV points parsed from {}\n", osv_file) 
+                raise RuntimeError("Not enough OSV points parsed from {}\n", osv_file)
 
         else:
 
@@ -171,6 +160,4 @@ class EnvisatProduct:
                 velocities[1].append(orbit["y_vel_1"] * 1e-5)
                 velocities[2].append(orbit["z_vel_1"] * 1e-5)
 
-
         return make_orbit(azimuth_times, positions, velocities)
-
