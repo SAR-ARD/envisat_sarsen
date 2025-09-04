@@ -41,13 +41,14 @@ def test_zero_doppler_plane_distance_velocity(
 ) -> None:
     orbit_interpolator = orbit.OrbitPolyfitInterpolator.from_position(orbit_ds.position)
 
-    res0, (res1, res2) = geocoding.zero_doppler_plane_distance_velocity(
+    res0, (res1, res2, res3) = geocoding.zero_doppler_plane_distance_velocity(
         dem_ecef, orbit_interpolator, orbit_ds.azimuth_time
     )
 
     assert isinstance(res0, xr.DataArray)
     assert isinstance(res1, xr.DataArray)
     assert isinstance(res2, xr.DataArray)
+    assert isinstance(res3, xr.DataArray)
 
 
 def test_backward_geocode(dem_ecef: xr.DataArray, orbit_ds: xr.Dataset) -> None:

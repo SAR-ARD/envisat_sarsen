@@ -46,6 +46,9 @@ name = "sarsen"
 readme = "README.md"
 requires-python = ">=3.10"
 
+[project.entry-points.'xarray.backends']
+asar = 'asar_xarray.xarray_backends:AsarBackend'
+
 [project.scripts]
 sarsen = "sarsen.__main__:app"
 
@@ -105,6 +108,3 @@ write_to_template = '''
 # Do not change! Do not track in version control!
 __version__ = "{version}"
 '''
-
-[project.entry-points.'xarray.backends']
-asar = 'asar_xarray.xarray_backends:AsarBackend'
