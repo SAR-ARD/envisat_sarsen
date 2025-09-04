@@ -6,6 +6,10 @@ from typing import Any, Dict, List
 import numpy as np
 import xarray as xr
 
+from loguru import logger
+
+import sarsen
+from sarsen import datamodel
 
 def make_orbit(
     azimuth_time: List[Any],
@@ -58,15 +62,18 @@ def azimuth_slant_range_grid(
 
 
 class EnvisatProduct:
-    def __init__(self, path: str, osv_file=None, *args: Any, **kwargs: Any) -> None:
+    def __init__(self, path: str, osv_file=None, polarization=None, *args: Any, **kwargs: Any) -> None:
         """
         Initialize an Envisat product.
 
         :param path: Path to the Envisat product file.
+        :param osv_file DOR_VOR orbit file
+        :param polarization APS/APP mode polarization
         """
         super().__init__(*args, **kwargs)
+
         self.path = path
-        self.measurement = xr.open_dataset(path, engine="asar")
+        self.measurement = xr.open_dataset(path, engine='asar', polarization=polarization)
         self.product_type = self.measurement.product_type
         self.osv = self.compute_osv(osv_file)
 
@@ -145,6 +152,8 @@ class EnvisatProduct:
                 raise RuntimeError("Not enough OSV points parsed from {}\n", osv_file)
 
         else:
+
+            logger.warning("Using ENVISAT format internal orbit data, this produces unstable results and is only for ease of testing")
             osv = self.measurement.attrs["metadata"]["records"][
                 "main_processing_params"
             ]["orbit_state_vectors"]
