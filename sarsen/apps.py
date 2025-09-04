@@ -333,31 +333,58 @@ def envisat_terrain_correction(
         enable_dask_distributed: bool = False,
         client_kwargs: Dict[str, Any] = {"processes": False},
 ) -> xr.DataArray:
-    """Apply the terrain-correction to sentinel-1 SLC and GRD products.
+    """Applies geometric and radiometric terrain correction to an Envisat product.
 
-    :param product: SarProduct instance representing the input data
-    :param dem_urlpath: dem path or url
-    :param orbit_group: overrides the orbit group name
-    :param calibration_group: overrides the calibration group name
-    :param coordinate_conversion_group: overrides the coordinate_conversion group name
-    :param output_urlpath: output path or url
-    :param correct_radiometry: default `None`. If `correct_radiometry=None`the radiometric terrain
-    correction is not applied. `correct_radiometry=gamma_bilinear` applies the gamma flattening classic
-    algorithm using bilinear interpolation to compute the weights. `correct_radiometry=gamma_nearest`
-    applies the gamma flattening using nearest neighbours instead of bilinear interpolation.
-    'gamma_nearest' significantly reduces the processing time
-    :param interp_method: interpolation method for product resampling.
-    The interpolation methods are the methods supported by ``xarray.DataArray.interp``
-    :param multilook: multilook factor. If `None` the multilook is not applied
-    :param grouping_area_factor: is a tuple of floats greater than 1. The default is `(1, 1)`.
-    The `grouping_area_factor`  can be increased (i) to speed up the processing or
-    (ii) when the input DEM resolution is low.
-    The Gamma Flattening usually works properly if the pixel size of the input DEM is much smaller
-    than the pixel size of the input Sentinel-1 product. Otherwise, the output may have radiometric distortions.
-    This problem can be avoided by increasing the `grouping_area_factor`.
-    Be aware that `grouping_area_factor` too high may degrade the final result
-    :param open_dem_raster_kwargs: additional keyword arguments passed on to ``xarray.open_dataset``
-    to open the `dem_urlpath`
+    This function performs a full terrain correction workflow, taking a raw
+    Envisat SAR product and a Digital Elevation Model (DEM) to produce a
+    geocoded, terrain-corrected image. The process involves simulating the
+    SAR acquisition geometry, optionally applying a radiometric correction to
+    compensate for terrain-induced distortions, and resampling the original
+    image onto the DEM's map grid.
+
+    The function is designed to be scalable and can leverage Dask for parallel
+    and out-of-core processing.
+
+    Args:
+        product (datamodel.SarProduct): The input SarProduct object to be corrected.
+        dem_urlpath (str): The file path or URL to the Digital Elevation Model (DEM) raster.
+        output_urlpath (Optional[str]): The file path or URL where the final terrain-corrected
+            output raster (e.g., a GeoTIFF) will be saved. Defaults to "GTC.tif".
+            If None, no output is saved, but the result is still returned.
+        layers_urlpath (Optional[str]): If provided, computes and saves additional geometric layers
+            (local and ellipsoid incidence angle) to this path. Defaults to None.
+        simulated_urlpath (Optional[str]): If provided, saves the simulated backscatter
+            image (gamma area) to this path.
+            Defaults to None.
+        correct_radiometry (Optional[str]): Specifies the radiometric correction method.
+            Can be 'gamma_bilinear' for classic gamma flattening with bilinear interpolation,
+            'gamma_nearest' for gamma flattening with nearest-neighbor (faster), or None
+            to skip radiometric correction. Defaults to None.
+        interp_method (xr.core.types.InterpOptions): The interpolation method for resampling
+            the SAR image, as supported by `xarray.DataArray.interp`. Defaults to "nearest".
+        grouping_area_factor (Tuple[float, float]): A factor to speed up processing by
+            grouping pixels. Can be increased for low-resolution DEMs, but high values may
+            degrade radiometric quality. Defaults to (3.0, 3.0).
+        open_dem_raster_kwargs (Dict[str, Any]): Additional keyword arguments to pass to
+            `xarray.open_dataset` when opening the DEM. Defaults to {}.
+        chunks (Optional[int]): The desired chunk size for Dask arrays during processing.
+            Affects memory usage and parallelism. Defaults to 1024.
+        radiometry_chunks (int): The chunk size specifically for the radiometry correction
+            step, which can have different performance characteristics. Defaults to 2048.
+        radiometry_bound (int): The size of the boundary/overlap between chunks during
+            radiometry calculation to avoid edge artifacts. Defaults to 128.
+        enable_dask_distributed (bool): If True, initializes and uses a Dask distributed
+            client for processing. Defaults to False.
+        client_kwargs (Dict[str, Any]): Keyword arguments to pass to the Dask `Client`
+            constructor if `enable_dask_distributed` is True. Defaults to {"processes": False}.
+
+    Returns:
+        xr.DataArray: The terrain-corrected product as an xarray DataArray.
+
+    Raises:
+        ValueError: If an unsupported `correct_radiometry` method is specified, if both
+            `output_urlpath` and `simulated_urlpath` are None, or if the product type
+            is not 'GRD' or 'SLC'.
     """
     # rioxarray must be imported explicitly or accesses to `.rio` may fail in dask
     assert rioxarray.__version__

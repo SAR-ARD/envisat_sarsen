@@ -7,6 +7,8 @@ Sarsen.
 :maxdepth: 2
 
 README.md
+sim.md
+sum.md
 API Reference <_api/sarsen/index>
 ```
 
