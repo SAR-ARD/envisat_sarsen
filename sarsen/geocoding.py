@@ -9,6 +9,7 @@ from typing import Any, Callable, TypeVar
 import numpy as np
 import numpy.typing as npt
 import xarray as xr
+from dask.array import da
 
 from sarsen import orbit
 
@@ -61,12 +62,12 @@ def angle_between(
 
 
 def secant_method(
-    ufunc: Callable[[ArrayLike], tuple[FloatArrayLike, Any]],
-    t_prev: ArrayLike,
-    t_curr: ArrayLike,
-    diff_ufunc: float = 1.0,
-    diff_t: Any = 1e-6,
-    maxiter: int = 10,
+        ufunc: Callable[[ArrayLike], tuple[FloatArrayLike, Any]],
+        t_prev: ArrayLike,
+        t_curr: ArrayLike,
+        diff_ufunc: float = 1.0,
+        diff_t: Any = 1e-6,
+        maxiter: int = 10,
 ) -> tuple[ArrayLike, ArrayLike, FloatArrayLike, int, Any]:
     """Return the root of ufunc calculated using the secant method."""
     # implementation modified from https://en.wikipedia.org/wiki/Secant_method
@@ -98,12 +99,12 @@ def secant_method(
 
 
 def newton_raphson_method(
-    ufunc: Callable[[ArrayLike], tuple[FloatArrayLike, Any]],
-    ufunc_prime: Callable[[ArrayLike, Any], FloatArrayLike],
-    t_curr: ArrayLike,
-    diff_ufunc: float = 1.0,
-    diff_t: Any = 1e-6,
-    maxiter: int = 10,
+        ufunc: Callable[[ArrayLike], tuple[FloatArrayLike, Any]],
+        ufunc_prime: Callable[[ArrayLike, Any], FloatArrayLike],
+        t_curr: ArrayLike,
+        diff_ufunc: float = 1.0,
+        diff_t: Any = 1e-6,
+        maxiter: int = 10,
 ) -> tuple[ArrayLike, FloatArrayLike, int, Any]:
     """Return the root of ufunc calculated using the Newton method."""
     # implementation based on https://en.wikipedia.org/wiki/Newton%27s_method
@@ -131,10 +132,10 @@ def newton_raphson_method(
 
 
 def zero_doppler_plane_distance_velocity(
-    dem_ecef: xr.DataArray,
-    orbit_interpolator: orbit.OrbitPolyfitInterpolator,
-    orbit_time: xr.DataArray,
-    dim: str = "axis",
+        dem_ecef: xr.DataArray,
+        orbit_interpolator: orbit.OrbitPolyfitInterpolator,
+        orbit_time: xr.DataArray,
+        dim: str = "axis",
 ) -> tuple[xr.DataArray, tuple[xr.DataArray, xr.DataArray, xr.DataArray]]:
     sar_ecef = orbit_interpolator.position_from_orbit_time(orbit_time)
     dem_distance = dem_ecef - orbit_interpolator.position_from_orbit_time(orbit_time)
@@ -144,16 +145,16 @@ def zero_doppler_plane_distance_velocity(
 
 
 def zero_doppler_plane_distance_velocity_prime(
-    orbit_interpolator: orbit.OrbitPolyfitInterpolator,
-    orbit_time: xr.DataArray,
-    payload: tuple[xr.DataArray, xr.DataArray, xr.DataArray],
-    dim: str = "axis",
+        orbit_interpolator: orbit.OrbitPolyfitInterpolator,
+        orbit_time: xr.DataArray,
+        payload: tuple[xr.DataArray, xr.DataArray, xr.DataArray],
+        dim: str = "axis",
 ) -> xr.DataArray:
     dem_distance, satellite_velocity, sar_ecef = payload
 
     plane_distance_velocity_prime = (
-        dem_distance * orbit_interpolator.acceleration_from_orbit_time(orbit_time)
-        - satellite_velocity**2
+            dem_distance * orbit_interpolator.acceleration_from_orbit_time(orbit_time)
+            - satellite_velocity ** 2
     ).sum(dim)
     return plane_distance_velocity_prime
 
@@ -272,6 +273,8 @@ def backward_geocode_simple(
     local_incidence_angle: xr.DataArray | None = None
     layover_shadow_mask: xr.DataArray | None = None
     gamma_sigma_ratio: xr.DataArray | None = None
+    layover_shadow_mask = None
+    gamma_sigma_ratio = None
     if calc_annotation:
         ellipsoid_incidence_angle = calculate_ellipsoid_incidence_angle(
             sar_ecef=sar_ecef, dem_ecef=dem_ecef
@@ -293,18 +296,18 @@ def backward_geocode_simple(
 
 
 def backward_geocode(
-    dem_ecef: xr.DataArray,
-    orbit_interpolator: orbit.OrbitPolyfitInterpolator,
-    orbit_time_guess: xr.DataArray | float = 0.0,
-    dim: str = "axis",
-    zero_doppler_distance: float = 1.0,
-    satellite_speed: float = 7_500.0,
-    method: str = "newton",
-    seed_step: tuple[int, int] | None = None,
-    maxiter: int = 10,
-    maxiter_after_seed: int = 1,
-    orbit_time_prev_shift: float = -0.1,
-    calc_annotation: bool = False,
+        dem_ecef: xr.DataArray,
+        orbit_interpolator: orbit.OrbitPolyfitInterpolator,
+        orbit_time_guess: xr.DataArray | float = 0.0,
+        dim: str = "axis",
+        zero_doppler_distance: float = 1.0,
+        satellite_speed: float = 7_500.0,
+        method: str = "newton",
+        seed_step: tuple[int, int] | None = None,
+        maxiter: int = 10,
+        maxiter_after_seed: int = 1,
+        orbit_time_prev_shift: float = -0.1,
+        calc_annotation: bool = False,
 ) -> xr.Dataset:
     """
     Perform backward geocoding to estimate satellite azimuth time and annotation layers for each DEM pixel.
@@ -477,7 +480,7 @@ def calculate_dem_normals_ecef(dem_ecef: xr.DataArray) -> xr.DataArray:
 
 
 def calculate_local_incidence_angle(
-    dem_ecef: xr.DataArray, sar_ecef: xr.DataArray
+        dem_ecef: xr.DataArray, sar_ecef: xr.DataArray
 ) -> xr.DataArray:
     def ensure_cyx(arr: xr.DataArray) -> xr.DataArray:
         if arr.shape[0] != 3:
@@ -507,27 +510,10 @@ def calculate_local_incidence_angle(
 
 
 def calculate_gamma_sigma_ratio(local_incidence_angle: xr.DataArray) -> xr.DataArray:
-    """
-    Calculate the gamma/sigma ratio for geometric correction in SAR geocoding.
-
-    The ratio is defined as 1 / cos(local_incidence_angle), where the local incidence angle
-    is given in degrees. This factor is used to convert between gamma nought and sigma nought
-    backscatter coefficients.
-
-    Parameters
-    ----------
-    local_incidence_angle : xr.DataArray
-        The local incidence angle in degrees.
-
-    Returns
-    -------
-    xr.DataArray
-        The gamma/sigma ratio as a DataArray, with the same dimensions and coordinates as the input.
-    """
     local_inc_data = local_incidence_angle.data
-    local_inc_rad = np.deg2rad(local_inc_data)
+    local_inc_rad = da.deg2rad(local_inc_data)
 
-    ratio_dask = 1.0 / np.cos(local_inc_rad)
+    ratio_dask = 1.0 / da.cos(local_inc_rad)
 
     gamma_sigma_ratio = xr.DataArray(
         data=ratio_dask,
@@ -544,43 +530,16 @@ def calculate_gamma_sigma_ratio(local_incidence_angle: xr.DataArray) -> xr.DataA
 
 
 def calculate_layover_shadow_mask(
-    local_incidence_angle: xr.DataArray | None,
-    ellipsoid_incidence_angle: xr.DataArray | None,
+        local_incidence_angle: xr.DataArray,
+        ellipsoid_incidence_angle: xr.DataArray,
 ) -> xr.DataArray:
-    """
-    Calculate the layover and shadow mask for SAR geocoding.
-
-    A pixel is marked as shadow if its local incidence angle is greater than 90 degrees,
-    and as layover if its local incidence angle is less than the ellipsoid incidence angle.
-    The returned mask is True where either layover or shadow occurs.
-
-    Parameters
-    ----------
-    local_incidence_angle : xr.DataArray
-        The local incidence angle in degrees.
-    ellipsoid_incidence_angle : xr.DataArray
-        The ellipsoid incidence angle in degrees.
-
-    Returns
-    -------
-    xr.DataArray
-        Boolean mask with the same shape as the input angles, True where layover or shadow occurs.
-    """
-    if local_incidence_angle is None or ellipsoid_incidence_angle is None:
-        raise ValueError(
-            "Both local_incidence_angle and ellipsoid_incidence_angle must be provided."
-        )
     local_angle_data = local_incidence_angle.data
     ellipsoid_angle_data = ellipsoid_incidence_angle.data
 
     shadow_mask = local_angle_data > 90.0
     layover_mask = local_angle_data < ellipsoid_angle_data
 
-    combined_mask = np.logical_or(shadow_mask, layover_mask)
+    combined_mask = da.logical_or(shadow_mask, layover_mask)
 
-    return xr.DataArray(
-        data=combined_mask,
-        dims=local_incidence_angle.dims,
-        coords=local_incidence_angle.coords,
-        name="Layover-Shadow mask",
-    )
+    return xr.DataArray(data=combined_mask, dims=local_angle_data.dims, coords=local_angle_data.coords,
+                        name="Layover-Shadow mask")
