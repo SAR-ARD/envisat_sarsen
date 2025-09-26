@@ -9,7 +9,6 @@ from typing import Any, Callable, TypeVar
 import numpy as np
 import numpy.typing as npt
 import xarray as xr
-from dask.array import da
 
 from sarsen import orbit
 
@@ -541,5 +540,5 @@ def calculate_layover_shadow_mask(
 
     combined_mask = np.logical_or(shadow_mask, layover_mask)
 
-    return xr.DataArray(data=combined_mask, dims=local_angle_data.dims, coords=local_angle_data.coords,
+    return xr.DataArray(data=combined_mask, dims=local_incidence_angle.dims, coords=local_incidence_angle.coords,
                         name="Layover-Shadow mask")
