@@ -334,7 +334,7 @@ def envisat_terrain_correction(
     enable_dask_distributed: bool = False,
     client_kwargs: Dict[str, Any] = {"processes": False},
 ) -> xr.DataArray:
-    """Apply the terrain-correction to sentinel-1 SLC and GRD products.
+    """Apply the terrain-correction to ENVISAT SLC and GRD products.
 
     :param product: SarProduct instance representing the input data
     :param dem_urlpath: dem path or url
