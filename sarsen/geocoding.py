@@ -511,9 +511,9 @@ def calculate_local_incidence_angle(
 
 def calculate_gamma_sigma_ratio(local_incidence_angle: xr.DataArray) -> xr.DataArray:
     local_inc_data = local_incidence_angle.data
-    local_inc_rad = da.deg2rad(local_inc_data)
+    local_inc_rad = np.deg2rad(local_inc_data)
 
-    ratio_dask = 1.0 / da.cos(local_inc_rad)
+    ratio_dask = 1.0 / np.cos(local_inc_rad)
 
     gamma_sigma_ratio = xr.DataArray(
         data=ratio_dask,
@@ -539,7 +539,7 @@ def calculate_layover_shadow_mask(
     shadow_mask = local_angle_data > 90.0
     layover_mask = local_angle_data < ellipsoid_angle_data
 
-    combined_mask = da.logical_or(shadow_mask, layover_mask)
+    combined_mask = np.logical_or(shadow_mask, layover_mask)
 
     return xr.DataArray(data=combined_mask, dims=local_angle_data.dims, coords=local_angle_data.coords,
                         name="Layover-Shadow mask")
