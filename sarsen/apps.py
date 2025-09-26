@@ -28,8 +28,13 @@ def make_simulate_acquisition_template(
     if calc_annotation:
         include_variables.add("ellipsoid_incidence_angle")
         include_variables.add("local_incidence_angle")
+        include_variables.add("gamma_sigma_ratio")
+        include_variables.add("layover_shadow_mask")
         acquisition_template["ellipsoid_incidence_angle"] = template_raster
         acquisition_template["local_incidence_angle"] = template_raster
+        acquisition_template["gamma_sigma_ratio"] = template_raster
+        acquisition_template["layover_shadow_mask"] = template_raster
+
 
     if correct_radiometry is not None:
         acquisition_template["gamma_area"] = template_raster
