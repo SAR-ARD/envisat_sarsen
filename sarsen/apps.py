@@ -35,6 +35,7 @@ def make_simulate_acquisition_template(
         acquisition_template["gamma_sigma_ratio"] = template_raster
         acquisition_template["layover_shadow_mask"] = template_raster
 
+
     if correct_radiometry is not None:
         acquisition_template["gamma_area"] = template_raster
         include_variables.add("gamma_area")
@@ -546,7 +547,7 @@ def envisat_terrain_correction(
         for layer_name, layer_data_array in layers_to_save.data_vars.items():
             layer_filename = f"{layers_urlpath}/{layer_name}.tif"
 
-                
+
             delayed_layers.append(layer_data_array.astype(np.float32).rio.to_raster(
                 layer_filename,
                 tiled=True,
