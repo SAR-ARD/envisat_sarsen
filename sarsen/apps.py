@@ -5,6 +5,17 @@ from unittest import mock
 import numpy as np
 import rioxarray
 import xarray as xr
+from dask_cuda import LocalCUDACluster, CUDAWorker
+from distributed import LocalCluster, SpecCluster, Nanny, Scheduler
+import dask.array as da
+
+try:
+    import cupy as xp
+    import cupy_xarray
+
+    CUDA_MODE = True
+except ImportError:
+    import numpy as xp
 
 from . import chunking, datamodel, geocoding, orbit, radiometry, scene
 
@@ -56,7 +67,17 @@ def simulate_acquisition(
         dem_ecef, orbit_interpolator, calc_annotation=calc_annotation
     )
 
-    slant_range = (acquisition.dem_distance ** 2).sum(dim="axis") ** 0.5
+    # slant_range = (acquisition.dem_distance ** 2).sum(dim="axis") ** 0.5
+
+    slant_range = xr.apply_ufunc(
+        lambda a: xp.sqrt(xp.sum(a ** 2, axis=-1)),
+        acquisition.dem_distance,
+        input_core_dims=[["axis"]],
+        output_core_dims=[[]],
+        dask="parallelized",
+        output_dtypes=[acquisition.dem_distance.dtype],
+        keep_attrs=True,
+    )
     slant_range_time = 2.0 / SPEED_OF_LIGHT * slant_range
 
     acquisition["slant_range_time"] = slant_range_time
@@ -337,7 +358,7 @@ def envisat_terrain_correction(
         radiometry_chunks: int = 2048,
         radiometry_bound: int = 128,
         enable_dask_distributed: bool = False,
-        client_kwargs: Dict[str, Any] = {"processes": False},
+        client_kwargs: Dict[str, Any] = {},
 ) -> xr.DataArray:
     """Apply the terrain-correction to ENVISAT SLC and GRD products.
 
@@ -383,7 +404,27 @@ def envisat_terrain_correction(
     if enable_dask_distributed:
         from dask.distributed import Client, Lock
 
-        client = Client(**client_kwargs)  # type: ignore
+        # cpu_cluster = LocalCluster(
+        #     n_workers=3,
+        #     threads_per_worker=2,
+        #     processes=True,
+        #     dashboard_address=":8787",
+        # )
+        #
+        # # One GPU worker attaches to the same scheduler
+        # gpu_cluster = LocalCUDACluster(  # NOTE: this one DOES take scheduler_address
+        #     n_workers=1,
+        #     scheduler_address=cpu_cluster.scheduler_address,
+        #     processes=True,
+        #     # env={"CUDA_VISIBLE_DEVICES": "0"},            # optional pinning
+        # )
+
+        # combine the two clusters
+        gpu_cluster = LocalCUDACluster(
+            device_memory_limit="3GB",
+            rmm_pool_size="2GB",
+        )
+        client = Client(gpu_cluster)
         to_raster_kwargs["lock"] = Lock("rio", client=client)  # type: ignore
         to_raster_kwargs["compute"] = False
         print(f"Dask distributed dashboard at: {client.dashboard_link}")
@@ -405,7 +446,7 @@ def envisat_terrain_correction(
     dem_ecef = xr.map_blocks(
         scene.convert_to_dem_ecef, dem_raster, kwargs={"source_crs": dem_raster.rio.crs}
     )
-    dem_ecef = dem_ecef.drop_vars(dem_ecef.rio.grid_mapping)
+    dem_ecef = dem_ecef.drop_vars(dem_ecef.rio.grid_mapping).as_cupy()
 
     logger.info("simulate acquisition")
 
@@ -425,6 +466,7 @@ def envisat_terrain_correction(
     orbit_interpolator = orbit.OrbitPolyfitInterpolator.from_position(
         product.state_vectors()
     )
+    orbit_interpolator.as_cupy()
     template_raster = dem_ecef.isel(axis=0).drop_vars(["axis"]) * 0.0
     acquisition = map_simulate_acquisition(
         dem_ecef,
@@ -444,7 +486,7 @@ def envisat_terrain_correction(
         elif correct_radiometry == "gamma_nearest":
             gamma_weights = radiometry.gamma_weights_nearest
 
-        acquisition = acquisition.persist()
+        # acquisition = acquisition.persist()
 
         simulated_beta_nought = chunking.map_ovelap(
             obj=acquisition,
@@ -523,17 +565,16 @@ def envisat_terrain_correction(
     #     )
 
     # test.compute()
-
-    maybe_delayed = geocoded.rio.to_raster(
-        output_urlpath,
-        dtype=np.float32,
-        tiled=True,
-        blockxsize=output_chunks,
-        blockysize=output_chunks,
-        compress="ZSTD",
-        num_threads="ALL_CPUS",
-        **to_raster_kwargs,
-    )
+    # maybe_delayed = geocoded.rio.to_raster(
+    #     output_urlpath,
+    #     dtype=np.float32,
+    #     tiled=True,
+    #     blockxsize=output_chunks,
+    #     blockysize=output_chunks,
+    #     compress="ZSTD",
+    #     num_threads="ALL_CPUS",
+    #     **to_raster_kwargs,
+    # )
 
     delayed_layers = []
     # write if urlpath is specified
@@ -567,6 +608,7 @@ def envisat_terrain_correction(
     return geocoded
 
 
+
 def slant_range_time_to_ground_range(
         azimuth_time: xr.DataArray, slant_range_time: xr.DataArray
 ) -> xr.DataArray:
@@ -574,3 +616,15 @@ def slant_range_time_to_ground_range(
     return datamodel.GroundRangeSarProduct.slant_range_time_to_ground_range(
         azimuth_time, slant_range_time
     )
+
+
+
+
+def _cupy_to_numpy_block(block):
+    try:
+        import cupy as cp
+        if isinstance(block, cp.ndarray):
+            return cp.asnumpy(block)  # device->host per chunk
+    except Exception:
+        pass
+    return np.asarray(block, copy=False)

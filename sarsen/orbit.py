@@ -6,6 +6,14 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
+try:
+    import cupy as xp
+    import cupy_xarray
+
+    CUDA_MODE = True
+except ImportError:
+    import numpy as xp
+
 S_TO_NS = 10**9
 
 
@@ -22,7 +30,26 @@ def polyder(coefficients: xr.DataArray) -> xr.DataArray:
 def orbit_time_to_azimuth_time(
     orbit_time: xr.DataArray, epoch: np.datetime64
 ) -> xr.DataArray:
-    azimuth_time = orbit_time * np.timedelta64(S_TO_NS, "ns") + epoch
+    orbit_time_ns = xr.apply_ufunc(
+        lambda a: xp.rint(a * S_TO_NS).astype("int64"),
+        orbit_time,
+        dask="parallelized",
+        output_dtypes=[np.int64],
+    )
+    def _int_ns_to_datetime(a):
+        # a is a chunk; it can be NumPy, Dask chunk, or CuPy
+        if hasattr(a, "get"):  # CuPy array
+            a = a.get()  # explicit device->host copy
+        else:
+            a = np.asarray(a)  # already NumPy
+        return a.astype("timedelta64[ns]") + epoch
+    # azimuth_time = orbit_time * xp.timedelta64(S_TO_NS, "ns") + epoch
+    azimuth_time = xr.apply_ufunc(
+        _int_ns_to_datetime,
+        orbit_time_ns,
+        dask="parallelized",
+        output_dtypes=[np.dtype("datetime64[ns]")],
+    )
     return azimuth_time.rename("azimuth_time")
 
 
@@ -70,6 +97,12 @@ class OrbitPolyfitInterpolator:
 
     def azimuth_time_to_orbit_time(self, orbit_time: xr.DataArray) -> xr.DataArray:
         return azimuth_time_to_orbit_time(orbit_time, self.epoch)
+
+    def as_cupy(self):
+        self.coefficients = self.coefficients.as_cupy()
+
+    def as_numpy(self):
+        self.coefficients = self.coefficients.as_numpy()
 
     def azimuth_time_range(self, freq_s: float = 0.02) -> xr.DataArray:
         azimuth_time_values = pd.date_range(
