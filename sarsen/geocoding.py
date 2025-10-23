@@ -371,6 +371,23 @@ def calculate_local_incidence_angle(
 
 
 def calculate_gamma_sigma_ratio(local_incidence_angle: xr.DataArray) -> xr.DataArray:
+    """
+    Calculate the gamma/sigma ratio for geometric correction in SAR geocoding.
+
+    The ratio is defined as 1 / cos(local_incidence_angle), where the local incidence angle
+    is given in degrees. This factor is used to convert between gamma nought and sigma nought
+    backscatter coefficients.
+
+    Parameters
+    ----------
+    local_incidence_angle : xr.DataArray
+        The local incidence angle in degrees.
+
+    Returns
+    -------
+    xr.DataArray
+        The gamma/sigma ratio as a DataArray, with the same dimensions and coordinates as the input.
+    """
     local_inc_data = local_incidence_angle.data
     local_inc_rad = np.deg2rad(local_inc_data)
 
@@ -394,6 +411,25 @@ def calculate_layover_shadow_mask(
     local_incidence_angle: xr.DataArray,
     ellipsoid_incidence_angle: xr.DataArray,
 ) -> xr.DataArray:
+    """
+    Calculate the layover and shadow mask for SAR geocoding.
+
+    A pixel is marked as shadow if its local incidence angle is greater than 90 degrees,
+    and as layover if its local incidence angle is less than the ellipsoid incidence angle.
+    The returned mask is True where either layover or shadow occurs.
+
+    Parameters
+    ----------
+    local_incidence_angle : xr.DataArray
+        The local incidence angle in degrees.
+    ellipsoid_incidence_angle : xr.DataArray
+        The ellipsoid incidence angle in degrees.
+
+    Returns
+    -------
+    xr.DataArray
+        Boolean mask with the same shape as the input angles, True where layover or shadow occurs.
+    """
     local_angle_data = local_incidence_angle.data
     ellipsoid_angle_data = ellipsoid_incidence_angle.data
 
