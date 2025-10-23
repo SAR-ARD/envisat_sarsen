@@ -17,15 +17,47 @@ ArrayLike = TypeVar("ArrayLike", bound=npt.ArrayLike)
 FloatArrayLike = TypeVar("FloatArrayLike", bound=npt.ArrayLike)
 
 
-def unit_vector(vector):
+def unit_vector(
+    vector: np.ndarray[Any, np.dtype[np.floating]],
+) -> np.ndarray[Any, np.dtype[np.floating]]:
+    """
+    Return the unit vector of the input vector.
+
+    Parameters
+    ----------
+    vector : np.ndarray
+        Input vector.
+
+    Returns
+    -------
+    np.ndarray
+        Unit vector in the same direction as the input.
+    """
     return vector / np.linalg.norm(vector)
 
 
-def angle_between(v1, v2):
-    """Calculate the angle in radians between vectors 'v1' and 'v2'."""
+def angle_between(
+    v1: np.ndarray[Any, np.dtype[np.floating]],
+    v2: np.ndarray[Any, np.dtype[np.floating]],
+) -> float:
+    """
+    Calculate the angle in radians between two vectors.
+
+    Parameters
+    ----------
+    v1 : np.ndarray
+        First input vector.
+    v2 : np.ndarray
+        Second input vector.
+
+    Returns
+    -------
+    float
+        Angle in radians between the two vectors.
+    """
     v1_u = unit_vector(v1)
     v2_u = unit_vector(v2)
-    return np.arccos(np.clip(np.dot(v1_u, v2_u), -1.0, 1.0))
+    return float(np.arccos(np.clip(np.dot(v1_u, v2_u), -1.0, 1.0)))
 
 
 def secant_method(
@@ -136,25 +168,72 @@ def backward_geocode_simple(
     method: str = "secant",
     orbit_time_prev_shift: float = -0.1,
     maxiter: int = 10,
-    calc_annotation=False,
+    calc_annotation: bool = False,
 ) -> tuple[
-    xr.DataArray,
-    xr.DataArray,
-    xr.DataArray,
-    xr.DataArray,
-    xr.DataArray,
-    xr.DataArray,
-    xr.DataArray,
+    xr.DataArray,  # orbit_time
+    xr.DataArray,  # dem_distance
+    xr.DataArray,  # satellite_velocity
+    xr.DataArray | None,  # ellipsoid_incidence_angle
+    xr.DataArray | None,  # local_incidence_angle
+    xr.DataArray | None,  # layover_shadow_mask
+    xr.DataArray | None,  # gamma_sigma_ratio
 ]:
-    diff_ufunc = zero_doppler_distance * satellite_speed
-    zero_doppler = functools.partial(
+    """
+    Perform a single backward geocoding step to estimate the satellite azimuth time for each DEM pixel.
+
+    This function solves for the orbit time (azimuth time) at which the satellite is closest to each DEM pixel
+    using either the secant or Newton-Raphson method. Optionally, it can also compute annotation
+    layers such as incidence angles, layover/shadow mask, and gamma/sigma ratio.
+
+    Parameters
+    ----------
+    dem_ecef : xr.DataArray
+        DEM points in ECEF coordinates, shape (3, ...).
+    orbit_interpolator : orbit.OrbitPolyfitInterpolator
+        Interpolator for satellite orbit position and velocity.
+    orbit_time_guess : xr.DataArray or float, optional
+        Initial guess for the orbit time (default: 0.0).
+    dim : str, optional
+        Name of the coordinate axis dimension (default: "axis").
+    zero_doppler_distance : float, optional
+        Tolerance for the zero-Doppler plane distance (default: 1.0).
+    satellite_speed : float, optional
+        Nominal satellite speed in m/s (default: 7500.0).
+    method : str, optional
+        Root-finding method: "secant" or "newton" (default: "secant").
+    orbit_time_prev_shift : float, optional
+        Shift for the previous orbit time guess in the secant method (default: -0.1).
+    maxiter : int, optional
+        Maximum number of iterations for the root-finding method (default: 10).
+    calc_annotation : bool, optional
+        If True, calculate annotation layers (default: False).
+
+    Returns
+    -------
+    tuple
+        Tuple containing:
+        - orbit_time: xr.DataArray
+        - dem_distance: xr.DataArray
+        - satellite_velocity: xr.DataArray
+        - ellipsoid_incidence_angle: xr.DataArray or None
+        - local_incidence_angle: xr.DataArray or None
+        - layover_shadow_mask: xr.DataArray or None
+        - gamma_sigma_ratio: xr.DataArray or None
+    """
+    diff_ufunc: float = zero_doppler_distance * satellite_speed
+    zero_doppler: Callable[
+        [xr.DataArray],
+        tuple[xr.DataArray, tuple[xr.DataArray, xr.DataArray, xr.DataArray]],
+    ] = functools.partial(
         zero_doppler_plane_distance_velocity, dem_ecef, orbit_interpolator
     )
 
     if isinstance(orbit_time_guess, xr.DataArray):
         pass
     else:
-        t_template = dem_ecef.isel({dim: 0}).drop_vars(dim).rename("azimuth_time")
+        t_template: xr.DataArray = (
+            dem_ecef.isel({dim: 0}).drop_vars(dim).rename("azimuth_time")
+        )
         orbit_time_guess = xr.full_like(
             t_template,
             orbit_time_guess,
@@ -162,7 +241,7 @@ def backward_geocode_simple(
         )
 
     if method == "secant":
-        orbit_time_guess_prev = orbit_time_guess + orbit_time_prev_shift
+        orbit_time_guess_prev: xr.DataArray = orbit_time_guess + orbit_time_prev_shift
         orbit_time, _, _, k, (dem_distance, satellite_velocity, sar_ecef) = (
             secant_method(
                 zero_doppler,
@@ -173,7 +252,10 @@ def backward_geocode_simple(
             )
         )
     elif method in {"newton", "newton_raphson"}:
-        zero_doppler_prime = functools.partial(
+        zero_doppler_prime: Callable[
+            [xr.DataArray, tuple[xr.DataArray, xr.DataArray, xr.DataArray]],
+            xr.DataArray,
+        ] = functools.partial(
             zero_doppler_plane_distance_velocity_prime, orbit_interpolator
         )
         orbit_time, _, k, (dem_distance, satellite_velocity, sar_ecef) = (
@@ -186,11 +268,10 @@ def backward_geocode_simple(
             )
         )
 
-    # sar_ecef = zero_doppler_plane_distance_velocity(dem_ecef, orbit_interpolator, orbit_time_guess)[1][2]
-    ellipsoid_incidence_angle = None
-    local_incidence_angle = None
-    layover_shadow_mask = None
-    gamma_sigma_ratio = None
+    ellipsoid_incidence_angle: xr.DataArray | None = None
+    local_incidence_angle: xr.DataArray | None = None
+    layover_shadow_mask: xr.DataArray | None = None
+    gamma_sigma_ratio: xr.DataArray | None = None
     if calc_annotation:
         ellipsoid_incidence_angle = calculate_ellipsoid_incidence_angle(
             sar_ecef=sar_ecef, dem_ecef=dem_ecef
@@ -223,8 +304,43 @@ def backward_geocode(
     maxiter: int = 10,
     maxiter_after_seed: int = 1,
     orbit_time_prev_shift: float = -0.1,
-    calc_annotation=False,
+    calc_annotation: bool = False,
 ) -> xr.Dataset:
+    """
+    Perform backward geocoding to estimate satellite azimuth time and annotation layers for each DEM pixel.
+
+    Parameters
+    ----------
+    dem_ecef : xr.DataArray
+        DEM points in ECEF coordinates, shape (3, ...).
+    orbit_interpolator : orbit.OrbitPolyfitInterpolator
+        Interpolator for satellite orbit position and velocity.
+    orbit_time_guess : xr.DataArray or float, optional
+        Initial guess for the orbit time (default: 0.0).
+    dim : str, optional
+        Name of the coordinate axis dimension (default: "axis").
+    zero_doppler_distance : float, optional
+        Tolerance for the zero-Doppler plane distance (default: 1.0).
+    satellite_speed : float, optional
+        Nominal satellite speed in m/s (default: 7500.0).
+    method : str, optional
+        Root-finding method: "secant" or "newton" (default: "newton").
+    seed_step : tuple[int, int] or None, optional
+        Step size for seeding the initial guess (default: None).
+    maxiter : int, optional
+        Maximum number of iterations for the root-finding method (default: 10).
+    maxiter_after_seed : int, optional
+        Maximum number of iterations after seeding (default: 1).
+    orbit_time_prev_shift : float, optional
+        Shift for the previous orbit time guess in the secant method (default: -0.1).
+    calc_annotation : bool, optional
+        If True, calculate annotation layers (default: False).
+
+    Returns
+    -------
+    xr.Dataset
+        Dataset containing azimuth time, DEM distance, satellite velocity, and optional annotation layers.
+    """
     if seed_step is not None:
         dem_ecef_seed = dem_ecef.isel(
             y=slice(seed_step[0] // 2, None, seed_step[0]),
@@ -280,7 +396,27 @@ def backward_geocode(
     return acquisition
 
 
-def calculate_ellipsoid_incidence_angle(sar_ecef: xr.DataArray, dem_ecef: xr.DataArray):
+def calculate_ellipsoid_incidence_angle(
+    sar_ecef: xr.DataArray, dem_ecef: xr.DataArray
+) -> xr.DataArray:
+    """
+    Calculate the ellipsoid incidence angle for each DEM pixel.
+
+    The ellipsoid incidence angle is the angle between the local ellipsoid normal
+    at the DEM point and the line-of-sight vector from the satellite to the DEM point.
+
+    Parameters
+    ----------
+    sar_ecef : xr.DataArray
+        Satellite position(s) in ECEF coordinates, shape (3, y, x).
+    dem_ecef : xr.DataArray
+        DEM points in ECEF coordinates, shape (3, y, x).
+
+    Returns
+    -------
+    xr.DataArray
+        Ellipsoid incidence angle in degrees, with the same spatial dimensions as the input.
+    """
     A = 6378137.0
     B = 6356752.3142451794975639665996337
     asq = A * A
@@ -408,8 +544,8 @@ def calculate_gamma_sigma_ratio(local_incidence_angle: xr.DataArray) -> xr.DataA
 
 
 def calculate_layover_shadow_mask(
-    local_incidence_angle: xr.DataArray,
-    ellipsoid_incidence_angle: xr.DataArray,
+    local_incidence_angle: xr.DataArray | None,
+    ellipsoid_incidence_angle: xr.DataArray | None,
 ) -> xr.DataArray:
     """
     Calculate the layover and shadow mask for SAR geocoding.
@@ -430,6 +566,10 @@ def calculate_layover_shadow_mask(
     xr.DataArray
         Boolean mask with the same shape as the input angles, True where layover or shadow occurs.
     """
+    if local_incidence_angle is None or ellipsoid_incidence_angle is None:
+        raise ValueError(
+            "Both local_incidence_angle and ellipsoid_incidence_angle must be provided."
+        )
     local_angle_data = local_incidence_angle.data
     ellipsoid_angle_data = ellipsoid_incidence_angle.data
 
