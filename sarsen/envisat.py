@@ -162,17 +162,23 @@ class EnvisatProduct:
                     velocities[2].append(vel_z)
 
                 if len(azimuth_times) <= 5:
-                    raise RuntimeError("Not enough OSV points parsed from {}\n", osv_file)
+                    raise RuntimeError(
+                        "Not enough OSV points parsed from {}\n", osv_file
+                    )
             elif ".E1" in product_name or ".E2" in product_name:
                 # parse a ERS POD REAPER orbit file
                 lines = None
                 with open(osv_file, "r") as fp:
                     lines = fp.readlines()
 
-                if ".E2" in product_name and not "L32" in lines[2]:
-                    raise RuntimeError("ERS2 product and orbit file does not have the ERS1 tag(L32)")
-                if ".E1" in product_name and not "L31" in lines[2]:
-                    raise RuntimeError("ERS1 product and orbit file does not have the ERS1 tag(L31)")
+                if ".E2" in product_name and "L32" not in lines[2]:
+                    raise RuntimeError(
+                        "ERS2 product and orbit file does not have the ERS1 tag(L32)"
+                    )
+                if ".E1" in product_name and "L31" not in lines[2]:
+                    raise RuntimeError(
+                        "ERS1 product and orbit file does not have the ERS1 tag(L31)"
+                    )
 
                 n_lines = len(lines)
                 i = 0
@@ -205,39 +211,63 @@ class EnvisatProduct:
                 jan06 = datetime.datetime(2006, 1, 1)
                 jan09 = datetime.datetime(2009, 1, 1)
                 jul12 = datetime.datetime(2012, 7, 1)
-                leap_dates = [jan91, jul91, jul93, jul94, jan96, jul97, jan99, jan06, jan09, jul12]
+                leap_dates = [
+                    jan91,
+                    jul91,
+                    jul93,
+                    jul94,
+                    jan96,
+                    jul97,
+                    jan99,
+                    jan06,
+                    jan09,
+                    jul12,
+                ]
                 leap_offsets = [26, 27, 28, 29, 30, 31, 32, 33, 34, 35]
                 leap_idx = -1
                 for i in range(len(leap_dates) - 1):
-                    if first_line_dt >= leap_dates[i] and first_line_dt <= leap_dates[i + 1]:
+                    if (
+                        first_line_dt >= leap_dates[i]
+                        and first_line_dt <= leap_dates[i + 1]
+                    ):
                         leap_idx = i
                         break
                 if leap_idx == -1:
-                    raise RunetimeError("Product start time = {} outside of know ERS1-2 lifetime".format(first_line_dt))
+                    raise RuntimeError(
+                        "Product start time = {} outside of know ERS1-2 lifetime".format(
+                            first_line_dt
+                        )
+                    )
 
                 leap_second = 19 - leap_offsets[leap_idx]
 
                 while i < n_lines - 3:
-
-                    if lines[i].startswith("*  ") and lines[i + 1].startswith('PL3') and lines[i + 2].startswith(
-                            'VL3'):
-
-                        time_tokens = ' '.join(lines[i].split()).split(" ")
+                    if (
+                        lines[i].startswith("*  ")
+                        and lines[i + 1].startswith("PL3")
+                        and lines[i + 2].startswith("VL3")
+                    ):
+                        time_tokens = " ".join(lines[i].split()).split(" ")
                         time_tokens = time_tokens[1:7]
                         time_tokens = [float(x) for x in time_tokens]
                         time_tokens = [int(x) for x in time_tokens]
 
-                        pos_tokens = ' '.join(lines[i + 1].split()).split(" ")
+                        pos_tokens = " ".join(lines[i + 1].split()).split(" ")
                         pos_tokens = pos_tokens[1:4]
                         pos_xyz = [float(x) for x in pos_tokens]
                         pos_xyz = [x * 1000.0 for x in pos_xyz]
-                        vel_tokens = ' '.join(lines[i + 2].split()).split(" ")
+                        vel_tokens = " ".join(lines[i + 2].split()).split(" ")
 
                         vel_tokens = vel_tokens[1:4]
                         vel_xyz = [float(i) for i in vel_tokens]
-                        osv_timestamp = datetime.datetime(time_tokens[0], time_tokens[1], time_tokens[2],
-                                                          time_tokens[3],
-                                                          time_tokens[4], time_tokens[5])
+                        osv_timestamp = datetime.datetime(
+                            time_tokens[0],
+                            time_tokens[1],
+                            time_tokens[2],
+                            time_tokens[3],
+                            time_tokens[4],
+                            time_tokens[5],
+                        )
 
                         osv_timestamp += datetime.timedelta(seconds=leap_second)
 
@@ -255,11 +285,16 @@ class EnvisatProduct:
                         i += 1
 
                 if len(azimuth_times) <= 5:
-                    raise RuntimeError("Not enough OSV points parsed from {}\n", osv_file)
+                    raise RuntimeError(
+                        "Not enough OSV points parsed from {}\n", osv_file
+                    )
 
             else:
                 raise RuntimeError(
-                    "Unknown product, the product name({}) must contain .N1, .E1 or .E2\n".format(product_name))
+                    "Unknown product, the product name({}) must contain .N1, .E1 or .E2\n".format(
+                        product_name
+                    )
+                )
 
         else:
             logger.warning(
