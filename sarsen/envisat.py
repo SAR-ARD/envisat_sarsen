@@ -254,6 +254,9 @@ class EnvisatProduct:
                     else:
                         i += 1
 
+                if len(azimuth_times) <= 5:
+                    raise RuntimeError("Not enough OSV points parsed from {}\n", osv_file)
+
             else:
                 raise RuntimeError(
                     "Unknown product, the product name({}) must contain .N1, .E1 or .E2\n".format(product_name))
