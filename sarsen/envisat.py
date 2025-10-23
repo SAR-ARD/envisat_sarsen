@@ -1,13 +1,14 @@
 """Envisat product and utilities."""
 
 import datetime
+import logging
 from typing import Any, Dict, List
 
 import numpy as np
 import xarray as xr
-import logging
 
 logger = logging.getLogger(__name__)
+
 
 def make_orbit(
     azimuth_time: List[Any],
