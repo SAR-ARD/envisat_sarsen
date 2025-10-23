@@ -29,12 +29,12 @@ def angle_between(v1, v2):
 
 
 def secant_method(
-        ufunc: Callable[[ArrayLike], tuple[FloatArrayLike, Any]],
-        t_prev: ArrayLike,
-        t_curr: ArrayLike,
-        diff_ufunc: float = 1.0,
-        diff_t: Any = 1e-6,
-        maxiter: int = 10,
+    ufunc: Callable[[ArrayLike], tuple[FloatArrayLike, Any]],
+    t_prev: ArrayLike,
+    t_curr: ArrayLike,
+    diff_ufunc: float = 1.0,
+    diff_t: Any = 1e-6,
+    maxiter: int = 10,
 ) -> tuple[ArrayLike, ArrayLike, FloatArrayLike, int, Any]:
     """Return the root of ufunc calculated using the secant method."""
     # implementation modified from https://en.wikipedia.org/wiki/Secant_method
@@ -66,12 +66,12 @@ def secant_method(
 
 
 def newton_raphson_method(
-        ufunc: Callable[[ArrayLike], tuple[FloatArrayLike, Any]],
-        ufunc_prime: Callable[[ArrayLike, Any], FloatArrayLike],
-        t_curr: ArrayLike,
-        diff_ufunc: float = 1.0,
-        diff_t: Any = 1e-6,
-        maxiter: int = 10,
+    ufunc: Callable[[ArrayLike], tuple[FloatArrayLike, Any]],
+    ufunc_prime: Callable[[ArrayLike, Any], FloatArrayLike],
+    t_curr: ArrayLike,
+    diff_ufunc: float = 1.0,
+    diff_t: Any = 1e-6,
+    maxiter: int = 10,
 ) -> tuple[ArrayLike, FloatArrayLike, int, Any]:
     """Return the root of ufunc calculated using the Newton method."""
     # implementation based on https://en.wikipedia.org/wiki/Newton%27s_method
@@ -99,10 +99,10 @@ def newton_raphson_method(
 
 
 def zero_doppler_plane_distance_velocity(
-        dem_ecef: xr.DataArray,
-        orbit_interpolator: orbit.OrbitPolyfitInterpolator,
-        orbit_time: xr.DataArray,
-        dim: str = "axis",
+    dem_ecef: xr.DataArray,
+    orbit_interpolator: orbit.OrbitPolyfitInterpolator,
+    orbit_time: xr.DataArray,
+    dim: str = "axis",
 ) -> tuple[xr.DataArray, tuple[xr.DataArray, xr.DataArray, xr.DataArray]]:
     sar_ecef = orbit_interpolator.position_from_orbit_time(orbit_time)
     dem_distance = dem_ecef - orbit_interpolator.position_from_orbit_time(orbit_time)
@@ -112,32 +112,40 @@ def zero_doppler_plane_distance_velocity(
 
 
 def zero_doppler_plane_distance_velocity_prime(
-        orbit_interpolator: orbit.OrbitPolyfitInterpolator,
-        orbit_time: xr.DataArray,
-        payload: tuple[xr.DataArray, xr.DataArray, xr.DataArray],
-        dim: str = "axis",
+    orbit_interpolator: orbit.OrbitPolyfitInterpolator,
+    orbit_time: xr.DataArray,
+    payload: tuple[xr.DataArray, xr.DataArray, xr.DataArray],
+    dim: str = "axis",
 ) -> xr.DataArray:
     dem_distance, satellite_velocity, sar_ecef = payload
 
     plane_distance_velocity_prime = (
-            dem_distance * orbit_interpolator.acceleration_from_orbit_time(orbit_time)
-            - satellite_velocity ** 2
+        dem_distance * orbit_interpolator.acceleration_from_orbit_time(orbit_time)
+        - satellite_velocity**2
     ).sum(dim)
     return plane_distance_velocity_prime
 
 
 def backward_geocode_simple(
-        dem_ecef: xr.DataArray,
-        orbit_interpolator: orbit.OrbitPolyfitInterpolator,
-        orbit_time_guess: xr.DataArray | float = 0.0,
-        dim: str = "axis",
-        zero_doppler_distance: float = 1.0,
-        satellite_speed: float = 7_500.0,
-        method: str = "secant",
-        orbit_time_prev_shift: float = -0.1,
-        maxiter: int = 10,
-        calc_annotation=False,
-) -> tuple[xr.DataArray, xr.DataArray, xr.DataArray, xr.DataArray, xr.DataArray, xr.DataArray, xr.DataArray]:
+    dem_ecef: xr.DataArray,
+    orbit_interpolator: orbit.OrbitPolyfitInterpolator,
+    orbit_time_guess: xr.DataArray | float = 0.0,
+    dim: str = "axis",
+    zero_doppler_distance: float = 1.0,
+    satellite_speed: float = 7_500.0,
+    method: str = "secant",
+    orbit_time_prev_shift: float = -0.1,
+    maxiter: int = 10,
+    calc_annotation=False,
+) -> tuple[
+    xr.DataArray,
+    xr.DataArray,
+    xr.DataArray,
+    xr.DataArray,
+    xr.DataArray,
+    xr.DataArray,
+    xr.DataArray,
+]:
     diff_ufunc = zero_doppler_distance * satellite_speed
     zero_doppler = functools.partial(
         zero_doppler_plane_distance_velocity, dem_ecef, orbit_interpolator
@@ -188,7 +196,9 @@ def backward_geocode_simple(
             sar_ecef=sar_ecef, dem_ecef=dem_ecef
         )
         local_incidence_angle = calculate_local_incidence_angle(dem_ecef, sar_ecef)
-        layover_shadow_mask = calculate_layover_shadow_mask(local_incidence_angle, ellipsoid_incidence_angle)
+        layover_shadow_mask = calculate_layover_shadow_mask(
+            local_incidence_angle, ellipsoid_incidence_angle
+        )
         gamma_sigma_ratio = calculate_gamma_sigma_ratio(local_incidence_angle)
     return (
         orbit_time,
@@ -202,18 +212,18 @@ def backward_geocode_simple(
 
 
 def backward_geocode(
-        dem_ecef: xr.DataArray,
-        orbit_interpolator: orbit.OrbitPolyfitInterpolator,
-        orbit_time_guess: xr.DataArray | float = 0.0,
-        dim: str = "axis",
-        zero_doppler_distance: float = 1.0,
-        satellite_speed: float = 7_500.0,
-        method: str = "newton",
-        seed_step: tuple[int, int] | None = None,
-        maxiter: int = 10,
-        maxiter_after_seed: int = 1,
-        orbit_time_prev_shift: float = -0.1,
-        calc_annotation=False,
+    dem_ecef: xr.DataArray,
+    orbit_interpolator: orbit.OrbitPolyfitInterpolator,
+    orbit_time_guess: xr.DataArray | float = 0.0,
+    dim: str = "axis",
+    zero_doppler_distance: float = 1.0,
+    satellite_speed: float = 7_500.0,
+    method: str = "newton",
+    seed_step: tuple[int, int] | None = None,
+    maxiter: int = 10,
+    maxiter_after_seed: int = 1,
+    orbit_time_prev_shift: float = -0.1,
+    calc_annotation=False,
 ) -> xr.Dataset:
     if seed_step is not None:
         dem_ecef_seed = dem_ecef.isel(
@@ -331,7 +341,7 @@ def calculate_dem_normals_ecef(dem_ecef: xr.DataArray) -> xr.DataArray:
 
 
 def calculate_local_incidence_angle(
-        dem_ecef: xr.DataArray, sar_ecef: xr.DataArray
+    dem_ecef: xr.DataArray, sar_ecef: xr.DataArray
 ) -> xr.DataArray:
     def ensure_cyx(arr: xr.DataArray) -> xr.DataArray:
         if arr.shape[0] != 3:
@@ -381,8 +391,8 @@ def calculate_gamma_sigma_ratio(local_incidence_angle: xr.DataArray) -> xr.DataA
 
 
 def calculate_layover_shadow_mask(
-        local_incidence_angle: xr.DataArray,
-        ellipsoid_incidence_angle: xr.DataArray,
+    local_incidence_angle: xr.DataArray,
+    ellipsoid_incidence_angle: xr.DataArray,
 ) -> xr.DataArray:
     local_angle_data = local_incidence_angle.data
     ellipsoid_angle_data = ellipsoid_incidence_angle.data
@@ -392,5 +402,9 @@ def calculate_layover_shadow_mask(
 
     combined_mask = np.logical_or(shadow_mask, layover_mask)
 
-    return xr.DataArray(data=combined_mask, dims=local_incidence_angle.dims, coords=local_incidence_angle.coords,
-                        name="Layover-Shadow mask")
+    return xr.DataArray(
+        data=combined_mask,
+        dims=local_incidence_angle.dims,
+        coords=local_incidence_angle.coords,
+        name="Layover-Shadow mask",
+    )

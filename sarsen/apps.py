@@ -35,7 +35,6 @@ def make_simulate_acquisition_template(
         acquisition_template["gamma_sigma_ratio"] = template_raster
         acquisition_template["layover_shadow_mask"] = template_raster
 
-
     if correct_radiometry is not None:
         acquisition_template["gamma_area"] = template_raster
         include_variables.add("gamma_area")
