@@ -1,11 +1,13 @@
 """Envisat product and utilities."""
 
 import datetime
-from typing import Any, Dict, List
+import logging
+from typing import Any, Dict, List, cast
 
 import numpy as np
 import xarray as xr
-from loguru import logger
+
+logger = logging.getLogger(__name__)
 
 
 def make_orbit(
@@ -14,7 +16,7 @@ def make_orbit(
     velocities: List[List[Any]],
     attrs: Dict[str, Any] = {},
 ) -> xr.DataArray:
-    position = xr.Variable(data=positions, dims=("axis", "azimuth_time"))  # type: ignore
+    position = xr.Variable(data=positions, dims=("axis", "azimuth_time"))
 
     ds = xr.DataArray(
         data=position,
@@ -60,7 +62,12 @@ def azimuth_slant_range_grid(
 
 class EnvisatProduct:
     def __init__(
-        self, path: str, osv_file=None, polarization=None, *args: Any, **kwargs: Any
+        self,
+        path: str,
+        osv_file: str | None = None,
+        polarization: str | None = None,
+        *args: Any,
+        **kwargs: Any,
     ) -> None:
         """
         Initialize an Envisat product.
@@ -81,7 +88,8 @@ class EnvisatProduct:
     def beta_nought(self) -> xr.DataArray:
         cal_factor = self.measurement.metadata["direct_parse"]["cal_factor"]
         cal_vector = self.measurement.metadata["direct_parse"]["cal_vector"]
-        return (np.power(np.abs(self.measurement), 2) / cal_factor) * cal_vector
+        result = (np.power(np.abs(self.measurement), 2) / cal_factor) * cal_vector
+        return cast(xr.DataArray, result)
 
     def grid_parameters(
         self,
@@ -89,7 +97,7 @@ class EnvisatProduct:
     ) -> dict[str, Any]:
         return azimuth_slant_range_grid(self.measurement.attrs, grouping_area_factor)
 
-    def state_vectors(self):
+    def state_vectors(self) -> xr.DataArray:
         return self.osv
 
     def complex_amplitude(self) -> xr.DataArray:
@@ -97,7 +105,7 @@ class EnvisatProduct:
         beta_nought = beta_nought.drop_vars(["pixel", "line"])
         return beta_nought
 
-    def compute_osv(self, osv_file=None):
+    def compute_osv(self, osv_file: str | None = None) -> xr.DataArray:
         azimuth_times: List[Any] = []
         positions: List[List[Any]] = [[], [], []]
         velocities: List[List[Any]] = [[], [], []]
@@ -161,9 +169,6 @@ class EnvisatProduct:
                 "main_processing_params"
             ]["orbit_state_vectors"]
 
-            azimuth_times: List[Any] = []
-            positions: List[List[Any]] = [[], [], []]
-            velocities: List[List[Any]] = [[], [], []]
             for orbit in osv:
                 azimuth_times.append(orbit["state_vect_time_1"])
                 positions[0].append(orbit["x_pos_1"] * 1e-2)

@@ -28,8 +28,12 @@ def make_simulate_acquisition_template(
     if calc_annotation:
         include_variables.add("ellipsoid_incidence_angle")
         include_variables.add("local_incidence_angle")
+        include_variables.add("gamma_sigma_ratio")
+        include_variables.add("layover_shadow_mask")
         acquisition_template["ellipsoid_incidence_angle"] = template_raster
         acquisition_template["local_incidence_angle"] = template_raster
+        acquisition_template["gamma_sigma_ratio"] = template_raster
+        acquisition_template["layover_shadow_mask"] = template_raster
 
     if correct_radiometry is not None:
         acquisition_template["gamma_area"] = template_raster
@@ -334,7 +338,7 @@ def envisat_terrain_correction(
     enable_dask_distributed: bool = False,
     client_kwargs: Dict[str, Any] = {"processes": False},
 ) -> xr.DataArray:
-    """Apply the terrain-correction to sentinel-1 SLC and GRD products.
+    """Apply the terrain-correction to ENVISAT SLC and GRD products.
 
     :param product: SarProduct instance representing the input data
     :param dem_urlpath: dem path or url
