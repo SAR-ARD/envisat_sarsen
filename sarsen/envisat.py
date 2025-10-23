@@ -5,8 +5,9 @@ from typing import Any, Dict, List
 
 import numpy as np
 import xarray as xr
-from loguru import logger
+import logging
 
+logger = logging.getLogger(__name__)
 
 def make_orbit(
     azimuth_time: List[Any],
