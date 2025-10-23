@@ -247,10 +247,10 @@ class EnvisatProduct:
                         and lines[i + 1].startswith("PL3")
                         and lines[i + 2].startswith("VL3")
                     ):
-                        time_tokens = " ".join(lines[i].split()).split(" ")
-                        time_tokens = time_tokens[1:7]
-                        time_tokens = [float(x) for x in time_tokens]
-                        time_tokens = [int(x) for x in time_tokens]
+                        time_tokens_str = " ".join(lines[i].split()).split(" ")
+                        time_tokens_str = time_tokens_str[1:7]
+                        time_tokens_float = [float(x) for x in time_tokens_str]
+                        time_tokens = [int(x) for x in time_tokens_float]
 
                         pos_tokens = " ".join(lines[i + 1].split()).split(" ")
                         pos_tokens = pos_tokens[1:4]
