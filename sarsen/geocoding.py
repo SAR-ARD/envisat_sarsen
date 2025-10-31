@@ -10,7 +10,7 @@ import numpy as np
 import numpy.typing as npt
 import xarray as xr
 
-from . import orbit
+from sarsen import orbit
 
 ArrayLike = TypeVar("ArrayLike", bound=npt.ArrayLike)
 
