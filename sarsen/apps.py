@@ -542,10 +542,12 @@ def envisat_terrain_correction(
             "gamma_sigma_ratio", "layover_shadow_mask"
         ]
         layers_to_save = acquisition[[var for var in annotation_layers if var in acquisition]]
+        delayed_layers = []
         for layer_name, layer_data_array in layers_to_save.data_vars.items():
             layer_filename = f"{layers_urlpath}/{layer_name}.tif"
 
-            layer_data_array.astype(np.float32).rio.to_raster(
+                
+                layers_delayed.append(layer_data_array.astype(np.float32).rio.to_raster(
                 layer_filename,
                 tiled=True,
                 blockxsize=output_chunks,
@@ -553,11 +555,13 @@ def envisat_terrain_correction(
                 compress="ZSTD",
                 num_threads="ALL_CPUS",
                 **to_raster_kwargs,
-            )
+            ))
 
 
     if enable_dask_distributed:
         maybe_delayed.compute()
+        for delayed : layers_delayed:
+            delayed.compute()
 
     return geocoded
 
