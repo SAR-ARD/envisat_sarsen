@@ -547,7 +547,7 @@ def envisat_terrain_correction(
             layer_filename = f"{layers_urlpath}/{layer_name}.tif"
 
                 
-                layers_delayed.append(layer_data_array.astype(np.float32).rio.to_raster(
+                delayed_layers.append(layer_data_array.astype(np.float32).rio.to_raster(
                 layer_filename,
                 tiled=True,
                 blockxsize=output_chunks,
@@ -560,7 +560,7 @@ def envisat_terrain_correction(
 
     if enable_dask_distributed:
         maybe_delayed.compute()
-        for delayed : layers_delayed:
+        for delayed : delayed_layers:
             delayed.compute()
 
     return geocoded
