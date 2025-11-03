@@ -1,4 +1,7 @@
 import sarsen
+import rasterio
+import rasterio.mask
+from shapely.geometry import box
 
 input_path: str = (
     "/home/achaad/CGI/ARD4ASAR/asar-xarray/tests/resources/"
@@ -8,6 +11,25 @@ cop_dem = "/home/achaad/CGI/ARD4ASAR/DEM/Copernicus_DSM_COG_30_N58_00_E023_00_DE
 srtm_dem = "/home/achaad/CGI/ARD4ASAR/DEM/srtm_41_01.tif"
 product = sarsen.EnvisatProduct(input_path)
 
+def clip_dem():
+    bbox = box(23, 58.5, 24, 59.5)
+    geometries = [bbox]
+    with rasterio.open(srtm_dem) as src:
+        print(src.crs)
+        print(src.bounds)
+        out_image, out_transform = rasterio.mask.mask(src, geometries, crop=True)
+        out_meta = src.meta.copy()
+        out_meta.update({"driver": "GTiff", "height": out_image.shape[1], "width": out_image.shape[2],"transform": out_transform})
+
+        with rasterio.open("cropped_dem.tif", "w", **out_meta) as dest:
+            dest.write(out_image)
+
+# clip_dem()
+
+cropped_dem = "/home/achaad/CGI/ARD4ASAR/envisat_sarsen/cropped_dem.tif"
+
 gtc = sarsen.envisat_terrain_correction(
-    product, dem_urlpath=cop_dem, layers_urlpath="/home/achaad/CGI/ARD4ASAR/envisat_sarsen/layers"
+    product, dem_urlpath=cropped_dem,
+    output_urlpath="/home/achaad/CGI/ARD4ASAR/envisat_sarsen/output.tif"
+    # layers_urlpath="/home/achaad/CGI/ARD4ASAR/envisat_sarsen/layers"
 )

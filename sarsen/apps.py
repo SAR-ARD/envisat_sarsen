@@ -526,6 +526,7 @@ def envisat_terrain_correction(
     logger.info("calibrate image")
 
     beta_nought = product.beta_nought()
+    beta_nought = beta_nought.as_cupy()
 
     logger.info("terrain-correct image")
 
@@ -546,40 +547,20 @@ def envisat_terrain_correction(
 
     logger.info("save output")
 
-    # test = RasterioWriter(raster_path="/tmp/test.tiff").to_raster(
-    #         xarray_dataarray=geocoded,
-    #         #tags=tags,
-    #         driver="GTIFF",
-    #         height=int(self.height),
-    #         width=int(self.width),
-    #         count=int(self.count),
-    #         dtype=dtype,
-    #         crs=self.crs,
-    #         transform=self.transform(recalc=recalc_transform),
-    #         gcps=self.get_gcps(),
-    #         nodata=rio_nodata,
-    #         windowed=windowed,
-    #         lock=lock,
-    #         compute=True,
-    #         **out_profile,
-    #     )
-
-    # test.compute()
-    # maybe_delayed = geocoded.rio.to_raster(
-    #     output_urlpath,
-    #     dtype=np.float32,
-    #     tiled=True,
-    #     blockxsize=output_chunks,
-    #     blockysize=output_chunks,
-    #     compress="ZSTD",
-    #     num_threads="ALL_CPUS",
-    #     **to_raster_kwargs,
-    # )
+    maybe_delayed = geocoded.rio.to_raster(
+        output_urlpath,
+        dtype=np.float32,
+        tiled=True,
+        blockxsize=output_chunks,
+        blockysize=output_chunks,
+        compress="ZSTD",
+        num_threads="ALL_CPUS",
+        **to_raster_kwargs,
+    )
 
     delayed_layers = []
     # write if urlpath is specified
     if layers_urlpath:
-        layers_dataset = acquisition.drop_vars("azimuth_time")
         annotation_layers = [
             "ellipsoid_incidence_angle", "local_incidence_angle",
             "gamma_sigma_ratio", "layover_shadow_mask"
