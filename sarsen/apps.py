@@ -46,7 +46,6 @@ def make_simulate_acquisition_template(
         acquisition_template["gamma_sigma_ratio"] = template_raster
         acquisition_template["layover_shadow_mask"] = template_raster
 
-
     if correct_radiometry is not None:
         acquisition_template["gamma_area"] = template_raster
         include_variables.add("gamma_area")
@@ -524,30 +523,92 @@ def envisat_terrain_correction(
         return simulated_beta_nought
 
     logger.info("calibrate image")
+    beta_nought = product.beta_nought()  # xarray DataArray with dims ('azimuth_time','slant_range_time')
 
-    beta_nought = product.beta_nought()
-    beta_nought = beta_nought.as_cupy()
+    tq_gpu = acquisition.azimuth_time.isel(x=0).data.compute()          # CuPy array on device
+    rq_gpu = acquisition.slant_range_time.isel(y=0).data.compute()      # CuPy array on device
 
-    logger.info("terrain-correct image")
+    tq_cpu_dt = xp.asnumpy(tq_gpu).astype('datetime64[ns]')              # NumPy on host
+    rq_cpu_dt = xp.asnumpy(rq_gpu).astype('datetime64[ns]')              # NumPy on host
+    tq_ns_cpu = tq_cpu_dt.view('int64')
+    rq_ns_cpu = rq_cpu_dt.view('int64')
+
+    # t_ns  = xp.asarray(beta_nought.azimuth_time.values.astype('datetime64[ns]').view('int64'))
+    # r_ns  = xp.asarray(beta_nought.slant_range_time.values.astype('datetime64[ns]').view('int64'))
+    # tq_ns = xp.asarray(tq_ns_cpu)
+    # rq_ns = xp.asarray(rq_ns_cpu)
+
+    t_ns = xp.asarray(
+        beta_nought.azimuth_time.values.astype('datetime64[ns]').view('int64')
+    )
+
+    # RANGE: timedelta64 -> int64(ns)
+    # (beta_nought slant_range_time should be a duration since transmit/receive, not an absolute time)
+    r_ns = xp.asarray(
+        beta_nought.slant_range_time.values.astype('timedelta64[ns]').view('int64')
+    )
+
+    # New-grid 1-D axes extracted from acquisition:
+    tq_gpu = acquisition.azimuth_time.isel(x=0).data.compute()  # device, datetime64
+    rq_gpu = acquisition.slant_range_time.isel(y=0).data.compute()  # device, float seconds
+
+    # Host copies with correct kinds
+    tq_cpu_dt = xp.asnumpy(tq_gpu).astype('datetime64[ns]')  # datetime64
+    tq_ns_cpu = tq_cpu_dt.view('int64')
+
+    # slant_range_time in acquisition is float (seconds). Convert to timedelta64[ns] *first*.
+    rq_cpu_td = (xp.asnumpy(rq_gpu).astype(np.float64) * 1e9).astype('timedelta64[ns]')
+    rq_ns_cpu = rq_cpu_td.view('int64')
+
+    # Push to GPU
+    tq_ns = xp.asarray(tq_ns_cpu)
+    rq_ns = xp.asarray(rq_ns_cpu)
+
+    beta_gpu = beta_nought["measurements"].map_blocks(lambda a: xp.asarray(a, dtype=xp.float32))
+
+    def _gpu_interp_block(block, y_old_ns, x_old_ns, y_new_ns, x_new_ns):
+        return bilinear_rect_grid(block, y_old_ns, x_old_ns, y_new_ns, x_new_ns)
+
+    Tq = tq_ns_cpu.shape[0]
+    Rq = rq_ns_cpu.shape[0]
 
     with mock.patch("xarray.core.missing._localize", lambda o, i: (o, i)):
-        geocoded = beta_nought.interp(
-            method=interp_method,
-            azimuth_time=acquisition.azimuth_time,
-            slant_range_time=acquisition.slant_range_time,
+        geocoded = xr.apply_ufunc(
+            _gpu_interp_block,
+            xr.DataArray(beta_gpu, dims=("azimuth_time", "slant_range_time")),
+            xr.DataArray(t_ns, dims=("azimuth_time",)),
+            xr.DataArray(r_ns, dims=("slant_range_time",)),
+            xr.DataArray(tq_ns, dims=("azimuth_time_new",)),
+            xr.DataArray(rq_ns, dims=("slant_range_time_new",)),
+            input_core_dims=[("azimuth_time", "slant_range_time"),
+                             ("azimuth_time",), ("slant_range_time",),
+                             ("azimuth_time_new",), ("slant_range_time_new",)],
+            output_core_dims=[("azimuth_time_new", "slant_range_time_new")],
+            dask="parallelized",
+            output_dtypes=[np.float32],
+            keep_attrs=True,
+            vectorize=False,
+            output_sizes={"azimuth_time_new": Tq, "slant_range_time_new": Rq},
         )
 
-    if correct_radiometry is not None:
-        geocoded = geocoded / simulated_beta_nought
-
+    geocoded = geocoded.rename({"azimuth_time_new": "y",
+                                "slant_range_time_new": "x"}).assign_coords(
+        acquisition.coords
+    )
     geocoded.attrs.update(beta_nought.attrs)
-    geocoded.x.attrs.update(dem_raster.x.attrs)
-    geocoded.y.attrs.update(dem_raster.y.attrs)
-    geocoded.rio.set_crs(dem_raster.rio.crs)
+    geocoded = geocoded.rio.write_crs(dem_raster.rio.crs)
+    geocoded = geocoded.chunk({"x": output_chunks, "y": output_chunks})
 
-    logger.info("save output")
+    # Back to CPU for write
+    if 'CUDA_MODE' in globals() and CUDA_MODE:
+        geocoded_cpu = geocoded.copy(deep=False)
+        geocoded_cpu.data = geocoded.data.map_blocks(
+            lambda a: xp.asnumpy(a), dtype=np.float32
+        )
+    else:
+        geocoded_cpu = geocoded.astype(np.float32)
 
-    maybe_delayed = geocoded.rio.to_raster(
+    maybe_delayed = geocoded_cpu.rio.to_raster(
         output_urlpath,
         dtype=np.float32,
         tiled=True,
@@ -557,7 +618,6 @@ def envisat_terrain_correction(
         num_threads="ALL_CPUS",
         **to_raster_kwargs,
     )
-
     delayed_layers = []
     # write if urlpath is specified
     if layers_urlpath:
@@ -569,7 +629,6 @@ def envisat_terrain_correction(
         for layer_name, layer_data_array in layers_to_save.data_vars.items():
             layer_filename = f"{layers_urlpath}/{layer_name}.tif"
 
-
             delayed_layers.append(layer_data_array.astype(np.float32).rio.to_raster(
                 layer_filename,
                 tiled=True,
@@ -580,14 +639,12 @@ def envisat_terrain_correction(
                 **to_raster_kwargs,
             ))
 
-
     if enable_dask_distributed:
         maybe_delayed.compute()
         for delayed in delayed_layers:
             delayed.compute()
 
     return geocoded
-
 
 
 def slant_range_time_to_ground_range(
@@ -599,13 +656,100 @@ def slant_range_time_to_ground_range(
     )
 
 
+def bilinear_rect_grid(data_gpu, y_old_ns, x_old_ns, y_new_ns, x_new_ns):
+    """
+    data_gpu: 2D CuPy array [Ty, Rx], float32
+    y_old_ns: 1D CuPy int64, size Ty (monotonic)
+    x_old_ns: 1D CuPy int64, size Rx (monotonic)
+    y_new_ns: 1D CuPy int64, size Tq
+    x_new_ns: 1D CuPy int64, size Rq
+    returns: 2D CuPy float32 [Tq, Rq]
+    """
 
+    # Convert to float to avoid int division
+    # yi1 = xp.clip(xp.searchsorted(y_old_ns, y_new_ns, side='right') - 1, 0, y_old_ns.size - 2)
+    # xi1 = xp.clip(xp.searchsorted(x_old_ns, x_new_ns, side='right') - 1, 0, x_old_ns.size - 2)
+    # yi2 = yi1 + 1
+    # xi2 = xi1 + 1
+    #
+    # # Gather neighbors (indices are fine)
+    # Y1, X1 = xp.meshgrid(yi1, xi1, indexing='ij')  # [Tq,Rq]
+    # Y2, X2 = Y1 + 1, X1 + 1
+    #
+    # Q11 = data_gpu[Y1, X1]
+    # Q12 = data_gpu[Y1, X2]
+    # Q21 = data_gpu[Y2, X1]
+    # Q22 = data_gpu[Y2, X2]
+    #
+    # # --- 2) Compute weights from DIFFERENCES, then cast to float ---
+    # y0 = y_old_ns[yi1];
+    # y1 = y_old_ns[yi2]
+    # x0 = x_old_ns[xi1];
+    # x1 = x_old_ns[xi2]
+    #
+    # # work in float but with *small* magnitudes (differences), so no precision loss
+    # dy = (y1 - y0).astype(xp.float64)
+    # dx = (x1 - x0).astype(xp.float64)
+    # num_y = (y_new_ns - y0).astype(xp.float64)
+    # num_x = (x_new_ns - x0).astype(xp.float64)
+    #
+    # wy = xp.where(dy != 0.0, num_y / dy, 0.0)
+    # wx = xp.where(dx != 0.0, num_x / dx, 0.0)
+    #
+    # wy2d = wy[:, None]
+    # wx2d = wx[None, :]
+    #
+    # out = ((1 - wy2d) * (1 - wx2d) * Q11 +
+    #        (1 - wy2d) * (wx2d) * Q12 +
+    #        (wy2d) * (1 - wx2d) * Q21 +
+    #        (wy2d) * (wx2d) * Q22)
+    # return out.astype(xp.float32)
+    if y_old_ns[1] < y_old_ns[0]:
+        y_old_ns = y_old_ns[::-1];
+        data_gpu = data_gpu[::-1, :]
+    if x_old_ns[1] < x_old_ns[0]:
+        x_old_ns = x_old_ns[::-1];
+        data_gpu = data_gpu[:, ::-1]
 
-def _cupy_to_numpy_block(block):
-    try:
-        import cupy as cp
-        if isinstance(block, cp.ndarray):
-            return cp.asnumpy(block)  # device->host per chunk
-    except Exception:
-        pass
-    return np.asarray(block, copy=False)
+        # 2) Out-of-bounds masks in INT space (no precision loss)
+    oob_y = (y_new_ns < y_old_ns[0]) | (y_new_ns > y_old_ns[-1])
+    oob_x = (x_new_ns < x_old_ns[0]) | (x_new_ns > x_old_ns[-1])
+
+    # 3) Indices in INT space
+    yi1 = xp.clip(xp.searchsorted(y_old_ns, y_new_ns, side='right') - 1, 0, y_old_ns.size - 2)
+    xi1 = xp.clip(xp.searchsorted(x_old_ns, x_new_ns, side='right') - 1, 0, x_old_ns.size - 2)
+    yi2 = yi1 + 1;
+    xi2 = xi1 + 1
+
+    # 4) Gather
+    Y1, X1 = xp.meshgrid(yi1, xi1, indexing='ij')
+    Q11 = data_gpu[Y1, X1]
+    Q12 = data_gpu[Y1, X1 + 1]
+    Q21 = data_gpu[Y1 + 1, X1]
+    Q22 = data_gpu[Y1 + 1, X1 + 1]
+
+    # 5) Weights from *differences* (small magnitudes) as float
+    y0 = y_old_ns[yi1];
+    y1 = y_old_ns[yi2]
+    x0 = x_old_ns[xi1];
+    x1 = x_old_ns[xi2]
+    dy = (y1 - y0).astype(xp.float64);
+    dx = (x1 - x0).astype(xp.float64)
+    wy = xp.where(dy != 0, (y_new_ns - y0).astype(xp.float64) / dy, 0.0)
+    wx = xp.where(dx != 0, (x_new_ns - x0).astype(xp.float64) / dx, 0.0)
+
+    wy2d = wy[:, None];
+    wx2d = wx[None, :]
+
+    out = ((1 - wy2d) * (1 - wx2d) * Q11 +
+           (1 - wy2d) * (wx2d) * Q12 +
+           (wy2d) * (1 - wx2d) * Q21 +
+           (wy2d) * (wx2d) * Q22).astype(xp.float32)
+
+    # 6) Apply OOB mask → NaN
+    if out.dtype != xp.float32:
+        out = out.astype(xp.float32)
+    mask2d = oob_y[:, None] | oob_x[None, :]
+    out = xp.where(mask2d, xp.nan, out)
+    return out
+
