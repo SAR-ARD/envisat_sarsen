@@ -30,6 +30,8 @@ cropped_dem = "/home/achaad/CGI/ARD4ASAR/envisat_sarsen/cropped_dem.tif"
 
 gtc = sarsen.envisat_terrain_correction(
     product, dem_urlpath=srtm_dem,
-    output_urlpath="/home/achaad/CGI/ARD4ASAR/envisat_sarsen/output.tif"
+    output_urlpath="/home/achaad/CGI/ARD4ASAR/envisat_sarsen/output.tif",
+    solution=1,
+    chunks=512
     # layers_urlpath="/home/achaad/CGI/ARD4ASAR/envisat_sarsen/layers"
 )
