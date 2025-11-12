@@ -550,9 +550,15 @@ def calculate_layover_shadow_mask(
     """
     Calculate the layover and shadow mask for SAR geocoding.
 
-    A pixel is marked as shadow if its local incidence angle is greater than 90 degrees,
-    and as layover if its local incidence angle is less than the ellipsoid incidence angle.
-    The returned mask is True where either layover or shadow occurs.
+    Coding:
+        0: not layover, not shadow
+        1: layover
+        2: shadow
+        3: layover in shadow
+
+    A pixel is marked as:
+        - shadow if its local incidence angle is greater than 90 degrees,
+        - layover if its local incidence angle is less than the ellipsoid incidence angle.
 
     Parameters
     ----------
@@ -564,7 +570,7 @@ def calculate_layover_shadow_mask(
     Returns
     -------
     xr.DataArray
-        Boolean mask with the same shape as the input angles, True where layover or shadow occurs.
+        Integer mask with the same shape as the input angles.
     """
     if local_incidence_angle is None or ellipsoid_incidence_angle is None:
         raise ValueError(
@@ -576,11 +582,15 @@ def calculate_layover_shadow_mask(
     shadow_mask = local_angle_data > 90.0
     layover_mask = local_angle_data < ellipsoid_angle_data
 
-    combined_mask = np.logical_or(shadow_mask, layover_mask)
+    combined_mask = layover_mask.astype(np.uint8) + 2 * shadow_mask.astype(np.uint8)
 
     return xr.DataArray(
         data=combined_mask,
         dims=local_incidence_angle.dims,
         coords=local_incidence_angle.coords,
         name="Layover-Shadow mask",
+        attrs={
+            "flag_values": np.array([0, 1, 2, 3], dtype=np.uint8),
+            "flag_meanings": "not_layover_not_shadow layover shadow layover_in_shadow",
+        }
     )
