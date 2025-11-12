@@ -18,7 +18,7 @@ FloatArrayLike = TypeVar("FloatArrayLike", bound=npt.ArrayLike)
 
 
 def unit_vector(
-    vector: np.ndarray[Any, np.dtype[np.floating]],
+        vector: np.ndarray[Any, np.dtype[np.floating]],
 ) -> np.ndarray[Any, np.dtype[np.floating]]:
     """
     Return the unit vector of the input vector.
@@ -37,8 +37,8 @@ def unit_vector(
 
 
 def angle_between(
-    v1: np.ndarray[Any, np.dtype[np.floating]],
-    v2: np.ndarray[Any, np.dtype[np.floating]],
+        v1: np.ndarray[Any, np.dtype[np.floating]],
+        v2: np.ndarray[Any, np.dtype[np.floating]],
 ) -> float:
     """
     Calculate the angle in radians between two vectors.
@@ -61,12 +61,12 @@ def angle_between(
 
 
 def secant_method(
-    ufunc: Callable[[ArrayLike], tuple[FloatArrayLike, Any]],
-    t_prev: ArrayLike,
-    t_curr: ArrayLike,
-    diff_ufunc: float = 1.0,
-    diff_t: Any = 1e-6,
-    maxiter: int = 10,
+        ufunc: Callable[[ArrayLike], tuple[FloatArrayLike, Any]],
+        t_prev: ArrayLike,
+        t_curr: ArrayLike,
+        diff_ufunc: float = 1.0,
+        diff_t: Any = 1e-6,
+        maxiter: int = 10,
 ) -> tuple[ArrayLike, ArrayLike, FloatArrayLike, int, Any]:
     """Return the root of ufunc calculated using the secant method."""
     # implementation modified from https://en.wikipedia.org/wiki/Secant_method
@@ -98,12 +98,12 @@ def secant_method(
 
 
 def newton_raphson_method(
-    ufunc: Callable[[ArrayLike], tuple[FloatArrayLike, Any]],
-    ufunc_prime: Callable[[ArrayLike, Any], FloatArrayLike],
-    t_curr: ArrayLike,
-    diff_ufunc: float = 1.0,
-    diff_t: Any = 1e-6,
-    maxiter: int = 10,
+        ufunc: Callable[[ArrayLike], tuple[FloatArrayLike, Any]],
+        ufunc_prime: Callable[[ArrayLike, Any], FloatArrayLike],
+        t_curr: ArrayLike,
+        diff_ufunc: float = 1.0,
+        diff_t: Any = 1e-6,
+        maxiter: int = 10,
 ) -> tuple[ArrayLike, FloatArrayLike, int, Any]:
     """Return the root of ufunc calculated using the Newton method."""
     # implementation based on https://en.wikipedia.org/wiki/Newton%27s_method
@@ -131,10 +131,10 @@ def newton_raphson_method(
 
 
 def zero_doppler_plane_distance_velocity(
-    dem_ecef: xr.DataArray,
-    orbit_interpolator: orbit.OrbitPolyfitInterpolator,
-    orbit_time: xr.DataArray,
-    dim: str = "axis",
+        dem_ecef: xr.DataArray,
+        orbit_interpolator: orbit.OrbitPolyfitInterpolator,
+        orbit_time: xr.DataArray,
+        dim: str = "axis",
 ) -> tuple[xr.DataArray, tuple[xr.DataArray, xr.DataArray, xr.DataArray]]:
     sar_ecef = orbit_interpolator.position_from_orbit_time(orbit_time)
     dem_distance = dem_ecef - orbit_interpolator.position_from_orbit_time(orbit_time)
@@ -144,31 +144,31 @@ def zero_doppler_plane_distance_velocity(
 
 
 def zero_doppler_plane_distance_velocity_prime(
-    orbit_interpolator: orbit.OrbitPolyfitInterpolator,
-    orbit_time: xr.DataArray,
-    payload: tuple[xr.DataArray, xr.DataArray, xr.DataArray],
-    dim: str = "axis",
+        orbit_interpolator: orbit.OrbitPolyfitInterpolator,
+        orbit_time: xr.DataArray,
+        payload: tuple[xr.DataArray, xr.DataArray, xr.DataArray],
+        dim: str = "axis",
 ) -> xr.DataArray:
     dem_distance, satellite_velocity, sar_ecef = payload
 
     plane_distance_velocity_prime = (
-        dem_distance * orbit_interpolator.acceleration_from_orbit_time(orbit_time)
-        - satellite_velocity**2
+            dem_distance * orbit_interpolator.acceleration_from_orbit_time(orbit_time)
+            - satellite_velocity ** 2
     ).sum(dim)
     return plane_distance_velocity_prime
 
 
 def backward_geocode_simple(
-    dem_ecef: xr.DataArray,
-    orbit_interpolator: orbit.OrbitPolyfitInterpolator,
-    orbit_time_guess: xr.DataArray | float = 0.0,
-    dim: str = "axis",
-    zero_doppler_distance: float = 1.0,
-    satellite_speed: float = 7_500.0,
-    method: str = "secant",
-    orbit_time_prev_shift: float = -0.1,
-    maxiter: int = 10,
-    calc_annotation: bool = False,
+        dem_ecef: xr.DataArray,
+        orbit_interpolator: orbit.OrbitPolyfitInterpolator,
+        orbit_time_guess: xr.DataArray | float = 0.0,
+        dim: str = "axis",
+        zero_doppler_distance: float = 1.0,
+        satellite_speed: float = 7_500.0,
+        method: str = "secant",
+        orbit_time_prev_shift: float = -0.1,
+        maxiter: int = 10,
+        calc_annotation: bool = False,
 ) -> tuple[
     xr.DataArray,  # orbit_time
     xr.DataArray,  # dem_distance
@@ -277,9 +277,10 @@ def backward_geocode_simple(
             sar_ecef=sar_ecef, dem_ecef=dem_ecef
         )
         local_incidence_angle = calculate_local_incidence_angle(dem_ecef, sar_ecef)
-        layover_shadow_mask = calculate_layover_shadow_mask(
-            local_incidence_angle, ellipsoid_incidence_angle
-        )
+        # layover_shadow_mask = calculate_layover_shadow_mask(
+        #     local_incidence_angle, ellipsoid_incidence_angle
+        # )
+        layover_shadow_mask = compute_layover_shadow_2_pass(dem_ecef, sar_ecef)
         gamma_sigma_ratio = calculate_gamma_sigma_ratio(local_incidence_angle)
     return (
         orbit_time,
@@ -293,18 +294,18 @@ def backward_geocode_simple(
 
 
 def backward_geocode(
-    dem_ecef: xr.DataArray,
-    orbit_interpolator: orbit.OrbitPolyfitInterpolator,
-    orbit_time_guess: xr.DataArray | float = 0.0,
-    dim: str = "axis",
-    zero_doppler_distance: float = 1.0,
-    satellite_speed: float = 7_500.0,
-    method: str = "newton",
-    seed_step: tuple[int, int] | None = None,
-    maxiter: int = 10,
-    maxiter_after_seed: int = 1,
-    orbit_time_prev_shift: float = -0.1,
-    calc_annotation: bool = False,
+        dem_ecef: xr.DataArray,
+        orbit_interpolator: orbit.OrbitPolyfitInterpolator,
+        orbit_time_guess: xr.DataArray | float = 0.0,
+        dim: str = "axis",
+        zero_doppler_distance: float = 1.0,
+        satellite_speed: float = 7_500.0,
+        method: str = "newton",
+        seed_step: tuple[int, int] | None = None,
+        maxiter: int = 10,
+        maxiter_after_seed: int = 1,
+        orbit_time_prev_shift: float = -0.1,
+        calc_annotation: bool = False,
 ) -> xr.Dataset:
     """
     Perform backward geocoding to estimate satellite azimuth time and annotation layers for each DEM pixel.
@@ -397,7 +398,7 @@ def backward_geocode(
 
 
 def calculate_ellipsoid_incidence_angle(
-    sar_ecef: xr.DataArray, dem_ecef: xr.DataArray
+        sar_ecef: xr.DataArray, dem_ecef: xr.DataArray
 ) -> xr.DataArray:
     """
     Calculate the ellipsoid incidence angle for each DEM pixel.
@@ -477,7 +478,7 @@ def calculate_dem_normals_ecef(dem_ecef: xr.DataArray) -> xr.DataArray:
 
 
 def calculate_local_incidence_angle(
-    dem_ecef: xr.DataArray, sar_ecef: xr.DataArray
+        dem_ecef: xr.DataArray, sar_ecef: xr.DataArray
 ) -> xr.DataArray:
     def ensure_cyx(arr: xr.DataArray) -> xr.DataArray:
         if arr.shape[0] != 3:
@@ -544,8 +545,8 @@ def calculate_gamma_sigma_ratio(local_incidence_angle: xr.DataArray) -> xr.DataA
 
 
 def calculate_layover_shadow_mask(
-    local_incidence_angle: xr.DataArray | None,
-    ellipsoid_incidence_angle: xr.DataArray | None,
+        local_incidence_angle: xr.DataArray | None,
+        ellipsoid_incidence_angle: xr.DataArray | None,
 ) -> xr.DataArray:
     """
     Calculate the layover and shadow mask for SAR geocoding.
@@ -588,6 +589,137 @@ def calculate_layover_shadow_mask(
         data=combined_mask,
         dims=local_incidence_angle.dims,
         coords=local_incidence_angle.coords,
+        name="Layover-Shadow mask",
+        attrs={
+            "flag_values": np.array([0, 1, 2, 3], dtype=np.uint8),
+            "flag_meanings": "not_layover_not_shadow layover shadow layover_in_shadow",
+        },
+    )
+
+
+def compute_layover_shadow_2_pass(
+        dem_ecef: xr.DataArray,
+        sar_ecef: xr.DataArray,
+        near_range_on_left: bool = True,
+        dem_nodata: float | None = None,
+) -> xr.DataArray:
+    """
+    Approximate SNAP Range-Doppler layover/shadow mask using the 2-pass method.
+
+    dem_ecef, sar_ecef: ECEF coords on the same (y, x) grid, with a 3-component axis.
+                        Shape can be (3, y, x) or (y, x, 3).
+    Returns a DataArray (y, x) with values:
+        0: not layover, not shadow
+        1: layover
+        2: shadow
+        3: layover in shadow
+    """
+
+    def ensure_cyx(arr: xr.DataArray) -> xr.DataArray:
+        if arr.shape[0] != 3:
+            comp_dim = [d for d in arr.dims if arr.sizes[d] == 3][0]
+            return arr.transpose(comp_dim, ...)
+        return arr
+
+    dem = ensure_cyx(dem_ecef)
+    sar = ensure_cyx(sar_ecef)
+
+    dem_np = np.asarray(dem.data)
+    sar_np = np.asarray(sar.data)
+
+    spatial_dims = dem.dims[1:]
+    H, W = dem_np.shape[1:]
+
+    los = sar_np - dem_np
+    slant = np.linalg.norm(los, axis=0)
+
+    h2 = np.sum(sar_np * sar_np, axis=0)  # |sensorPos|^2
+    r2 = np.sum(dem_np * dem_np, axis=0)  # |earthPoint|^2
+    denom = 2.0 * slant * np.sqrt(h2)
+
+    with np.errstate(divide="ignore", invalid="ignore"):
+        cos_elev = (slant * slant + h2 - r2) / denom
+
+    cos_elev = np.clip(cos_elev, -1.0, 1.0)
+    elev = np.degrees(np.arccos(cos_elev))
+
+    if dem_nodata is not None:
+        valid = np.isfinite(slant) & np.isfinite(elev)
+    else:
+        valid = np.isfinite(slant) & np.isfinite(elev)
+
+    mask = np.zeros((H, W), dtype=np.uint8)
+
+    for y in range(H):
+        save_pixel = valid[y, :]
+        if not np.any(save_pixel):
+            continue
+
+        sl = slant[y, :]
+        ev = elev[y, :]
+
+        if near_range_on_left:
+            max_slr = 0.0
+            for i in range(W):
+                if not save_pixel[i]:
+                    continue
+                if sl[i] > max_slr:
+                    max_slr = sl[i]
+                else:
+                    mask[y, i] |= 1
+
+            min_slr = max_slr
+            for i in range(W - 1, -1, -1):
+                if not save_pixel[i]:
+                    continue
+                if sl[i] <= min_slr:
+                    min_slr = sl[i]
+                else:
+                    mask[y, i] |= 1
+
+            max_elev = 0.0
+            for i in range(W):
+                if not save_pixel[i]:
+                    continue
+                if ev[i] > max_elev:
+                    max_elev = ev[i]
+                else:
+                    mask[y, i] |= 2
+
+        else:
+            max_slr = 0.0
+            for i in range(W - 1, -1, -1):
+                if not save_pixel[i]:
+                    continue
+                if sl[i] > max_slr:
+                    max_slr = sl[i]
+                else:
+                    mask[y, i] |= 1
+
+            min_slr = max_slr
+            for i in range(W):
+                if not save_pixel[i]:
+                    continue
+                if sl[i] < min_slr:
+                    min_slr = sl[i]
+                else:
+                    mask[y, i] |= 1
+
+            max_elev = 0.0
+            for i in range(W - 1, -1, -1):
+                if not save_pixel[i]:
+                    continue
+                if ev[i] > max_elev:
+                    max_elev = ev[i]
+                else:
+                    mask[y, i] |= 2
+
+    coords = {d: dem.coords[d] for d in spatial_dims if d in dem.coords}
+
+    return xr.DataArray(
+        data=mask,
+        dims=spatial_dims,
+        coords=coords,
         name="Layover-Shadow mask",
         attrs={
             "flag_values": np.array([0, 1, 2, 3], dtype=np.uint8),
