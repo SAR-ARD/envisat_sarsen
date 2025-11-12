@@ -548,18 +548,17 @@ def envisat_terrain_correction(
         ]
         for layer_name, layer_data_array in layers_to_save.data_vars.items():
             layer_filename = f"{layers_urlpath}/{layer_name}.tif"
-
-            delayed_layers.append(
-                layer_data_array.astype(np.float32).rio.to_raster(
-                    layer_filename,
-                    tiled=True,
-                    blockxsize=output_chunks,
-                    blockysize=output_chunks,
-                    compress="ZSTD",
-                    num_threads="ALL_CPUS",
-                    **to_raster_kwargs,
-                )
+            layer = layer_data_array.astype(np.float32).rio.to_raster(
+                layer_filename,
+                tiled=True,
+                blockxsize=output_chunks,
+                blockysize=output_chunks,
+                compress="ZSTD",
+                num_threads="ALL_CPUS",
+                **to_raster_kwargs,
             )
+            layer.rio.set_crs(dem_raster.rio.crs)
+            delayed_layers.append(layer)
 
     if enable_dask_distributed:
         maybe_delayed.compute()
