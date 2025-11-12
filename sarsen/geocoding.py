@@ -592,5 +592,5 @@ def calculate_layover_shadow_mask(
         attrs={
             "flag_values": np.array([0, 1, 2, 3], dtype=np.uint8),
             "flag_meanings": "not_layover_not_shadow layover shadow layover_in_shadow",
-        }
+        },
     )
