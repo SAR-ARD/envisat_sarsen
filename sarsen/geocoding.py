@@ -277,8 +277,12 @@ def backward_geocode_simple(
             sar_ecef=sar_ecef, dem_ecef=dem_ecef
         )
         local_incidence_angle = calculate_local_incidence_angle(dem_ecef, sar_ecef)
-        layover_shadow_mask = calculate_layover_shadow_mask(
-            local_incidence_angle, ellipsoid_incidence_angle
+        # layover_shadow_mask = calculate_layover_shadow_mask(
+        #     local_incidence_angle, ellipsoid_incidence_angle
+        # )
+        near_left = infer_near_range_on_left(dem_ecef, sar_ecef)
+        layover_shadow_mask = compute_layover_shadow_2_pass(
+            dem_ecef, sar_ecef, near_range_on_left=near_left
         )
         gamma_sigma_ratio = calculate_gamma_sigma_ratio(local_incidence_angle)
     return (
@@ -594,3 +598,194 @@ def calculate_layover_shadow_mask(
             "flag_meanings": "not_layover_not_shadow layover shadow layover_in_shadow",
         },
     )
+
+
+def compute_layover_shadow_2_pass(
+    dem_ecef: xr.DataArray,
+    sar_ecef: xr.DataArray,
+    near_range_on_left: bool = True,
+    valid_mask: xr.DataArray | None = None,
+) -> xr.DataArray:
+    """
+    SNAP-like layover / shadow mask using the 2-pass slant-range & elevation-angle method.
+
+    Parameters
+    ----------
+    dem_ecef : xr.DataArray
+        DEM points in ECEF coordinates, shape (3, Y, X) or (Y, X, 3).
+    sar_ecef : xr.DataArray
+        Sensor positions in ECEF at each DEM grid point, same shape as dem_ecef.
+    near_range_on_left : bool, default True
+        True if smaller slant ranges are at lower X index.
+    valid_mask : xr.DataArray[bool], optional
+        If given, True where geometry is valid (equivalent to SNAP's savePixel[]).
+
+    Returns
+    -------
+    xr.DataArray
+        Integer mask (Y, X) with values:
+            0: no layover, no shadow
+            1: layover
+            2: shadow
+            3: layover in shadow
+    """
+
+    def ensure_cyx(arr: xr.DataArray) -> xr.DataArray:
+        # Bring the 3-component axis to the front: (3, Y, X)
+        if arr.shape[0] != 3:
+            comp_dim = [d for d in arr.dims if arr.sizes[d] == 3][0]
+            return arr.transpose(comp_dim, ...)
+        return arr
+
+    def update_mask_snap(mask_line: np.ndarray, i: int, value: int) -> None:
+        # Emulate SNAP's saveLayoverShadow mask update logic (without 2x2 spreading).
+        v0 = mask_line[i]
+        if v0 == 0:
+            mask_line[i] = value
+        elif v0 == 1 and value == 2:
+            mask_line[i] = 3
+
+    dem = ensure_cyx(dem_ecef)
+    sar = ensure_cyx(sar_ecef)
+
+    dem_np = np.asarray(dem.data)
+    sar_np = np.asarray(sar.data)
+
+    spatial_dims = dem.dims[1:]
+    h, w = dem_np.shape[1:]
+
+    los = sar_np - dem_np
+    slant = np.linalg.norm(los, axis=0)
+
+    h2 = np.sum(sar_np * sar_np, axis=0)
+    r2 = np.sum(dem_np * dem_np, axis=0)
+    denom = 2.0 * slant * np.sqrt(h2)
+
+    with np.errstate(divide="ignore", invalid="ignore"):
+        cos_elev = (slant * slant + h2 - r2) / denom
+
+    cos_elev = np.clip(cos_elev, -1.0, 1.0)
+    elev = np.degrees(np.arccos(cos_elev))
+
+    if valid_mask is not None:
+        valid = np.asarray(valid_mask.data) & np.isfinite(slant) & np.isfinite(elev)
+    else:
+        valid = np.isfinite(slant) & np.isfinite(elev)
+
+    mask = np.zeros((h, w), dtype=np.uint8)
+
+    for y in range(h):
+        save_pixel = valid[y, :]
+        if not np.any(save_pixel):
+            continue
+
+        sl = slant[y, :]
+        ev = elev[y, :]
+        line_mask = mask[y, :]
+
+        if near_range_on_left:
+            max_slr = 0.0
+            for i in range(w):
+                if not save_pixel[i]:
+                    continue
+                if sl[i] > max_slr:
+                    max_slr = sl[i]
+                else:
+                    update_mask_snap(line_mask, i, 1)
+
+            min_slr = max_slr
+            for i in range(w - 1, -1, -1):
+                if not save_pixel[i]:
+                    continue
+                if sl[i] <= min_slr:
+                    min_slr = sl[i]
+                else:
+                    update_mask_snap(line_mask, i, 1)
+
+            max_elev = 0.0
+            for i in range(w):
+                if not save_pixel[i]:
+                    continue
+                if ev[i] > max_elev:
+                    max_elev = ev[i]
+                else:
+                    update_mask_snap(line_mask, i, 2)
+
+        else:
+            max_slr = 0.0
+            for i in range(w - 1, -1, -1):
+                if not save_pixel[i]:
+                    continue
+                if sl[i] > max_slr:
+                    max_slr = sl[i]
+                else:
+                    update_mask_snap(line_mask, i, 1)
+
+            min_slr = max_slr
+            for i in range(w):
+                if not save_pixel[i]:
+                    continue
+                if sl[i] < min_slr:
+                    min_slr = sl[i]
+                else:
+                    update_mask_snap(line_mask, i, 1)
+
+            max_elev = 0.0
+            for i in range(w - 1, -1, -1):
+                if not save_pixel[i]:
+                    continue
+                if ev[i] > max_elev:
+                    max_elev = ev[i]
+                else:
+                    update_mask_snap(line_mask, i, 2)
+
+    coords = {d: dem.coords[d] for d in spatial_dims if d in dem.coords}
+
+    return xr.DataArray(
+        data=mask,
+        dims=spatial_dims,
+        coords=coords,
+        name="Layover-Shadow mask",
+        attrs={
+            "flag_values": np.array([0, 1, 2, 3], dtype=np.uint8),
+            "flag_meanings": "not_layover_not_shadow layover shadow layover_in_shadow",
+        },
+    )
+
+
+def infer_near_range_on_left(dem_ecef: xr.DataArray, sar_ecef: xr.DataArray) -> bool:
+    """
+    Decide if near range is on the left (x=0) or right (x=-1) of the grid.
+
+    Returns True if near range is on the left, False if it is on the right.
+    """
+
+    # Ensure shape (3, Y, X)
+    def ensure_cyx(arr: xr.DataArray) -> xr.DataArray:
+        if arr.shape[0] != 3:
+            comp_dim = [d for d in arr.dims if arr.sizes[d] == 3][0]
+            return arr.transpose(comp_dim, ...)
+        return arr
+
+    dem = ensure_cyx(dem_ecef)
+    sar = ensure_cyx(sar_ecef)
+
+    dem_np = np.asarray(dem.data)
+    sar_np = np.asarray(sar.data)
+
+    # slant range
+    slant = np.linalg.norm(sar_np - dem_np, axis=0)
+
+    h, w = slant.shape
+    row = h // 2  # middle azimuth line
+
+    # Take a small window near left and right edges to be robust
+    k = max(1, w // 20)  # ~5% of width
+    left_vals = slant[row, :k]
+    right_vals = slant[row, -k:]
+
+    sl_left = np.nanmean(left_vals)
+    sl_right = np.nanmean(right_vals)
+
+    # Near range = smaller slant
+    return bool(sl_left < sl_right)
