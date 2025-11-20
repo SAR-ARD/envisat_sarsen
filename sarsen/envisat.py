@@ -36,8 +36,8 @@ def azimuth_slant_range_grid(
 ) -> dict[str, Any]:
     if attrs["product_type"] == "SLC":
         slant_range_spacing_m = (
-            attrs["range_pixel_spacing"]
-            * np.sin(attrs["incidence_angle_mid_swath"])
+            (attrs["range_pixel_spacing"]
+            / np.sin(attrs["incidence_angle_mid_swath"]))
             * grouping_area_factor[1]
         )
     else:
