@@ -321,10 +321,11 @@ def terrain_correction(
 
     return geocoded
 
+
 def slant_range_time_to_ground_range(
-        azimuth_time: xr.DataArray,
-        slant_range_time: xr.DataArray,
-        coordinate_conversion: xr.Dataset,
+    azimuth_time: xr.DataArray,
+    slant_range_time: xr.DataArray,
+    coordinate_conversion: xr.Dataset,
 ) -> xr.DataArray:
     """Convert slant range time to ground range using the coordinate conversion metadata.
 
@@ -339,7 +340,7 @@ def slant_range_time_to_ground_range(
         azimuth_time=azimuth_time,
     )
     x = slant_range
-    ground_range = (srgrCoefficients * x ** srgrCoefficients.degree).sum("degree")
+    ground_range = (srgrCoefficients * x**srgrCoefficients.degree).sum("degree")
 
     return ground_range
 
@@ -510,9 +511,16 @@ def envisat_terrain_correction(
 
     with mock.patch("xarray.core.missing._localize", lambda o, i: (o, i)):
         if "ground_range" in beta_nought.coords.keys():
-            ground_range = slant_range_time_to_ground_range(azimuth_time=acquisition.azimuth_time, slant_range_time=acquisition.slant_range_time,
-                                                            coordinate_conversion=product.measurement.srgr_conversion)
-            geocoded = beta_nought.interp(method=interp_method, azimuth_time=acquisition.azimuth_time, ground_range=ground_range)
+            ground_range = slant_range_time_to_ground_range(
+                azimuth_time=acquisition.azimuth_time,
+                slant_range_time=acquisition.slant_range_time,
+                coordinate_conversion=product.measurement.srgr_conversion,
+            )
+            geocoded = beta_nought.interp(
+                method=interp_method,
+                azimuth_time=acquisition.azimuth_time,
+                ground_range=ground_range,
+            )
         else:
             geocoded = beta_nought.interp(
                 method=interp_method,
@@ -594,4 +602,3 @@ def envisat_terrain_correction(
             delayed.compute()
 
     return geocoded
-
