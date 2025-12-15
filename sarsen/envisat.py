@@ -2,7 +2,7 @@
 
 import datetime
 import logging
-from typing import Any, Dict, List, cast
+from typing import Any, cast
 
 import numpy as np
 import xarray as xr
@@ -11,16 +11,15 @@ logger = logging.getLogger(__name__)
 
 
 def make_orbit(
-    azimuth_time: List[Any],
-    positions: List[List[Any]],
-    velocities: List[List[Any]],
-    attrs: Dict[str, Any] = {},
+        azimuth_time: list[np.datetime64],
+        positions: list[list[float]],
+        **kwargs: Any,
 ) -> xr.DataArray:
     position = xr.Variable(data=positions, dims=("axis", "azimuth_time"))
 
     ds = xr.DataArray(
         data=position,
-        attrs=attrs,
+        attrs=kwargs,
         coords={
             "azimuth_time": [np.datetime64(dt, "ns") for dt in azimuth_time],
             "axis": [0, 1, 2],
@@ -31,19 +30,19 @@ def make_orbit(
 
 
 def azimuth_slant_range_grid(
-    attrs: dict[str, Any],
-    grouping_area_factor: tuple[float, float] = (3.0, 3.0),
+        attrs: dict[str, Any],
+        grouping_area_factor: tuple[float, float] = (3.0, 3.0),
 ) -> dict[str, Any]:
+    spacing_rg = attrs["range_pixel_spacing"]
     if attrs["product_type"] == "SLC":
-        slant_range_spacing_m = (
-            attrs["range_pixel_spacing"] / np.sin(attrs["incidence_angle_mid_swath"])
-        ) * grouping_area_factor[1]
+        inc = attrs["incidence_angle_mid_swath"]
+        slant_range_spacing_m = (spacing_rg / np.sin(inc)) * grouping_area_factor[1]
     else:
-        slant_range_spacing_m = attrs["range_pixel_spacing"] * grouping_area_factor[1]
+        slant_range_spacing_m = spacing_rg * grouping_area_factor[1]
 
     c = 299792458
     slant_range_time_interval_s = (
-        slant_range_spacing_m * 2 / c  # ignore type
+            slant_range_spacing_m * 2 / c  # ignore type
     )
 
     grid_parameters: dict[str, Any] = {
@@ -52,7 +51,7 @@ def azimuth_slant_range_grid(
         "slant_range_spacing_m": slant_range_spacing_m,
         "azimuth_time0": np.datetime64(attrs["product_first_line_utc_time"]),
         "azimuth_time_interval_s": attrs["azimuth_time_interval"]
-        * grouping_area_factor[0],
+                                   * grouping_area_factor[0],
         "azimuth_spacing_m": attrs["azimuth_pixel_spacing"] * grouping_area_factor[0],
     }
     return grid_parameters
@@ -60,12 +59,12 @@ def azimuth_slant_range_grid(
 
 class EnvisatProduct:
     def __init__(
-        self,
-        path: str,
-        osv_file: str | None = None,
-        polarization: str | None = None,
-        *args: Any,
-        **kwargs: Any,
+            self,
+            path: str,
+            osv_file: str | None = None,
+            polarization: str | None = None,
+            *args: Any,
+            **kwargs: Any,
     ) -> None:
         """
         Initialize an Envisat product.
@@ -90,8 +89,8 @@ class EnvisatProduct:
         return cast(xr.DataArray, result)
 
     def grid_parameters(
-        self,
-        grouping_area_factor: tuple[float, float] = (3.0, 3.0),
+            self,
+            grouping_area_factor: tuple[float, float] = (3.0, 3.0),
     ) -> dict[str, Any]:
         return azimuth_slant_range_grid(self.measurement.attrs, grouping_area_factor)
 
@@ -104,9 +103,9 @@ class EnvisatProduct:
         return beta_nought
 
     def compute_osv(self, osv_file: str | None = None) -> xr.DataArray:
-        azimuth_times: List[Any] = []
-        positions: List[List[Any]] = [[], [], []]
-        velocities: List[List[Any]] = [[], [], []]
+        azimuth_times: list[np.datetime64] = []
+        positions: list[list[float]] = [[], [], []]
+        velocities: list[list[float]] = [[], [], []]
 
         if osv_file:
             # osv file passed as argument, parse a DORIS Envisat orbit file
@@ -225,8 +224,8 @@ class EnvisatProduct:
                 leap_idx = -1
                 for i in range(len(leap_dates) - 1):
                     if (
-                        first_line_dt >= leap_dates[i]
-                        and first_line_dt <= leap_dates[i + 1]
+                            first_line_dt >= leap_dates[i]
+                            and first_line_dt <= leap_dates[i + 1]
                     ):
                         leap_idx = i
                         break
@@ -241,9 +240,9 @@ class EnvisatProduct:
 
                 while i < n_lines - 3:
                     if (
-                        lines[i].startswith("*  ")
-                        and lines[i + 1].startswith("PL3")
-                        and lines[i + 2].startswith("VL3")
+                            lines[i].startswith("*  ")
+                            and lines[i + 1].startswith("PL3")
+                            and lines[i + 2].startswith("VL3")
                     ):
                         time_tokens_str = " ".join(lines[i].split()).split(" ")
                         time_tokens_str = time_tokens_str[1:7]
@@ -252,8 +251,7 @@ class EnvisatProduct:
 
                         pos_tokens = " ".join(lines[i + 1].split()).split(" ")
                         pos_tokens = pos_tokens[1:4]
-                        pos_xyz = [float(x) for x in pos_tokens]
-                        pos_xyz = [x * 1000.0 for x in pos_xyz]
+                        pos_xyz = [float(x) * 1000.0 for x in pos_tokens]
                         vel_tokens = " ".join(lines[i + 2].split()).split(" ")
 
                         vel_tokens = vel_tokens[1:4]
@@ -288,11 +286,8 @@ class EnvisatProduct:
                     )
 
             else:
-                raise RuntimeError(
-                    "Unknown product, the product name({}) must contain .N1, .E1 or .E2\n".format(
-                        product_name
-                    )
-                )
+                msg = f"Unknown product, the product name({product_name}) must contain .N1, .E1 or .E2"
+                raise RuntimeError(msg)
 
         else:
             logger.warning(
@@ -312,4 +307,5 @@ class EnvisatProduct:
                 velocities[1].append(orbit["y_vel_1"] * 1e-5)
                 velocities[2].append(orbit["z_vel_1"] * 1e-5)
 
-        return make_orbit(azimuth_times, positions, velocities)
+        return make_orbit(azimuth_time=azimuth_times, positions=positions,
+                          velocities=velocities)
