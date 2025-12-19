@@ -382,6 +382,16 @@ def backward_geocode(
         calc_annotation=calc_annotation,
     )
 
+
+    # Experimental azimuth bistatic correction, required for Envisat
+    # Likely the correction should be done earlier, otherwise the annotation layer files are incorrectly handled
+    # https://github.com/SAR-ARD/envisat_sarsen/issues/7 for a more detailed discussion
+    print("DEBUG Azimuth bistatic bias correction")
+
+    slant_range = (dem_distance ** 2).sum(dim="axis") ** 0.5
+    orbit_time += slant_range / 299792458
+    dem_distance = dem_ecef - orbit_interpolator.position_from_orbit_time(orbit_time)
+
     acquisition = xr.Dataset(
         data_vars={
             "azimuth_time": orbit_interpolator.orbit_time_to_azimuth_time(orbit_time),
